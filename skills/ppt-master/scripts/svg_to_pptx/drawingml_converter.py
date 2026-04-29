@@ -165,6 +165,11 @@ _CONVERTERS = {
     'text': convert_text,
     'image': convert_image,
     'g': convert_g,
+    # Treat <a> as a transparent group: its children (rect/path/text)
+    # render normally so the button is visible. The clickable hyperlink
+    # itself is added separately as an overlay shape by pptx_builder via
+    # svg_link_extractor.extract_links.
+    'a': convert_g,
 }
 
 

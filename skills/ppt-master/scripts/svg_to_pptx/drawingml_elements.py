@@ -628,10 +628,17 @@ def convert_polyline(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | Non
 # text
 # ---------------------------------------------------------------------------
 
-def _normalize_text(text: str) -> str:
-    """Collapse internal whitespace/newlines into a single space, strip ends."""
+def _normalize_text(text: str, preserve_space: bool = False) -> str:
+    """Collapse internal whitespace/newlines into a single space, strip ends.
+
+    When `preserve_space` is True (caller has xml:space="preserve" or is
+    inside such an element), keep the text byte-for-byte — code listings
+    rely on leading spaces for indentation.
+    """
     if not text:
         return ''
+    if preserve_space:
+        return text
     return re.sub(r'\s+', ' ', text).strip()
 
 
@@ -697,11 +704,15 @@ def _build_text_runs(
     Each run is a dict with keys: text, fill, fill_raw, font_weight,
     font_style, font_family, font_size. Nested tspans are walked recursively so
     inline format changes inside a tspan still produce distinct runs.
+
+    Honors `xml:space="preserve"` on the <text> element so leading whitespace
+    (used for code listing indentation) survives intact.
     """
     runs: list[dict[str, Any]] = []
+    preserve = elem.get('{http://www.w3.org/XML/1998/namespace}space') == 'preserve'
 
     if elem.text:
-        t = _normalize_text(elem.text)
+        t = _normalize_text(elem.text, preserve_space=preserve)
         if t:
             runs.append({**parent_attrs, 'text': t})
 
@@ -710,7 +721,7 @@ def _build_text_runs(
         if child_tag == 'tspan':
             runs.extend(_collect_tspan_runs(child, parent_attrs))
             if child.tail:
-                t = _normalize_text(child.tail)
+                t = _normalize_text(child.tail, preserve_space=preserve)
                 if t:
                     runs.append({**parent_attrs, 'text': t})
 
