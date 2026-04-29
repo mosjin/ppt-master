@@ -185,8 +185,17 @@ def extract_links(
     svg_path: Path,
     slide_width_emu: int,
     slide_height_emu: int,
+    absolute_link_base: Path | None = None,
 ) -> list[dict]:
     """Extract <a href> regions from an SVG and return PPTX-ready link specs.
+
+    Args:
+        svg_path: SVG file to scan.
+        slide_width_emu / slide_height_emu: target slide dimensions for EMU scaling.
+        absolute_link_base: if provided, relative href values are rewritten as
+            file:///<absolute_link_base>/<href>. Useful when PowerPoint cannot
+            resolve relative hyperlinks (e.g. opens browser to "无法找到文件").
+            Trade-off: PPTX is no longer portable to a different filesystem.
 
     Returns a list of dicts:
         {href: str, x: int, y: int, w: int, h: int}   (all in EMU)
@@ -248,8 +257,17 @@ def extract_links(
         if w_svg <= 0 or h_svg <= 0:
             continue
 
+        out_href = href
+        if absolute_link_base is not None and '://' not in href and not href.startswith(('/', '#')):
+            abs_path = (absolute_link_base / href).resolve()
+            # POSIX-style path inside file:/// URI (works on Windows too)
+            posix = str(abs_path).replace('\\', '/')
+            if not posix.startswith('/'):
+                posix = '/' + posix  # add leading / before drive letter on Windows
+            out_href = f'file://{posix}'
+
         links.append({
-            'href': href,
+            'href': out_href,
             'x': round(x_svg * scale_x),
             'y': round(y_svg * scale_y),
             'w': round(w_svg * scale_x),

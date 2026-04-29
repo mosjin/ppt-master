@@ -87,6 +87,12 @@ Speaker notes (enabled by default):
     parser.add_argument('--no-compat', action='store_true',
                         help='Disable Office compatibility mode (pure SVG only, requires Office 2019+)')
 
+    parser.add_argument('--absolute-links', type=str, default=None, metavar='BASE_DIR',
+                        help='Rewrite relative SVG <a href="..."> as absolute file:/// URLs '
+                             'rooted at BASE_DIR. Use when PowerPoint/WPS cannot resolve '
+                             'relative hyperlinks (e.g. shows "无法找到文件"). Trade-off: '
+                             'PPTX is no longer portable to a different filesystem path.')
+
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument('--only', type=str, choices=['native', 'legacy'], default=None,
                             help='Only generate one version: native (editable shapes) or legacy (SVG image)')
@@ -190,6 +196,7 @@ Speaker notes (enabled by default):
         animation=animation,
         animation_duration=args.animation_duration,
         animation_stagger=args.animation_stagger,
+        absolute_link_base=Path(args.absolute_links).resolve() if args.absolute_links else None,
     )
 
     success = True

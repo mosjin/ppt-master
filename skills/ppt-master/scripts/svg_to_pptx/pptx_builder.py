@@ -90,6 +90,7 @@ def create_pptx_with_native_svg(
     animation: str | None = None,
     animation_duration: float = 0.3,
     animation_stagger: float = 0.1,
+    absolute_link_base: Path | None = None,
 ) -> bool:
     """Create a PPTX file with native SVG.
 
@@ -214,7 +215,7 @@ def create_pptx_with_native_svg(
                     # Inject SVG hyperlinks as transparent overlay shapes
                     # (must precede transition/timing injection so the spTree
                     # is finalized before <p:transition>/<p:timing> are appended).
-                    raw_links = extract_links(svg_path, width_emu, height_emu)
+                    raw_links = extract_links(svg_path, width_emu, height_emu, absolute_link_base=absolute_link_base)
                     if raw_links:
                         used_rids = [
                             int(re.match(r'rId(\d+)', r['id']).group(1))
@@ -368,7 +369,7 @@ def create_pptx_with_native_svg(
                             svg_rid = 'rId2'
 
                     # Extract SVG hyperlinks and assign rIds (starting after rId3)
-                    raw_links = extract_links(svg_path, width_emu, height_emu)
+                    raw_links = extract_links(svg_path, width_emu, height_emu, absolute_link_base=absolute_link_base)
                     link_rels = []
                     link_regions = []
                     for li, lk in enumerate(raw_links):
