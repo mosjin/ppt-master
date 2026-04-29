@@ -2,8 +2,83 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+_PATH_NUM_RE = re.compile(r'-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?')
+_PATH_CMD_RE = re.compile(r'([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)')
+
+# Number of numeric arguments per command (one segment).
+# Note: 'M' acts as 'L' for subsequent number pairs.
+_PATH_ARG_COUNT = {
+    'M': 2, 'L': 2, 'T': 2,
+    'H': 1, 'V': 1,
+    'C': 6, 'S': 4, 'Q': 4,
+    'A': 7,  # rx ry rot large sweep x y
+    'Z': 0,
+}
+
+
+def _path_bbox(d: str) -> tuple[float, float, float, float] | None:
+    """Compute a bounding box for an SVG path's `d` attribute.
+
+    Tracks the pen position through M/L/H/V/C/S/Q/T/A/Z commands so that
+    arc-flag bytes (0/1) are not mistaken for coordinates.
+    """
+    cur_x = cur_y = 0.0
+    start_x = start_y = 0.0
+    xs: list[float] = []
+    ys: list[float] = []
+
+    for cmd, args_str in _PATH_CMD_RE.findall(d):
+        upper = cmd.upper()
+        relative = cmd != upper
+        nums = [float(m) for m in _PATH_NUM_RE.findall(args_str)]
+        argc = _PATH_ARG_COUNT.get(upper, 0)
+
+        if upper == 'Z':
+            cur_x, cur_y = start_x, start_y
+            continue
+        if argc == 0 or not nums:
+            continue
+
+        for i in range(0, len(nums), argc):
+            chunk = nums[i:i + argc]
+            if len(chunk) < argc:
+                break
+            if upper == 'H':
+                nx = chunk[0] + (cur_x if relative else 0)
+                ny = cur_y
+            elif upper == 'V':
+                nx = cur_x
+                ny = chunk[0] + (cur_y if relative else 0)
+            elif upper == 'A':
+                # Endpoint is the last two numbers (x, y); skip flags.
+                nx = chunk[5] + (cur_x if relative else 0)
+                ny = chunk[6] + (cur_y if relative else 0)
+            else:
+                # M/L/T → last 2; C → last 2 of 6; S/Q → last 2 of 4
+                nx = chunk[-2] + (cur_x if relative else 0)
+                ny = chunk[-1] + (cur_y if relative else 0)
+
+            xs.append(nx)
+            ys.append(ny)
+            cur_x, cur_y = nx, ny
+            if upper == 'M' and i == 0:
+                start_x, start_y = cur_x, cur_y
+                # subsequent M-args behave as L
+                upper = 'L'
+
+    if not xs or not ys:
+        return None
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    w = x_max - x_min
+    h = y_max - y_min
+    if w <= 0 or h <= 0:
+        return None
+    return (x_min, y_min, w, h)
 
 
 _SVG_NS = 'http://www.w3.org/2000/svg'
@@ -58,6 +133,13 @@ def _elem_bbox(elem: ET.Element) -> tuple[float, float, float, float] | None:
         ry = _float(elem.get('ry'))
         if rx > 0 and ry > 0:
             return (cx - rx, cy - ry, 2 * rx, 2 * ry)
+
+    elif tag == _TAGS['path']:
+        # finalize_svg.py converts rounded rects to <path> — recover bbox
+        # by walking M/L/H/V/C/S/Q/T/A commands so arc flag bytes (0/1)
+        # don't get mistaken for coordinates.
+        d = elem.get('d') or ''
+        return _path_bbox(d)
 
     elif tag == _TAGS['text']:
         x = _float(elem.get('x'))
