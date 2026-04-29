@@ -824,7 +824,10 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 
     # Estimate text dimensions
     text_width = estimate_text_width(full_text, font_size, font_weight) * 1.15
-    text_height = font_size * 1.5
+    # 1.2× covers ascender + descender + line gap for typical fonts.
+    # 1.5× was too generous and caused adjacent textboxes (emoji + caption,
+    # frame_id + title) to vertically overlap in PowerPoint rendering.
+    text_height = font_size * 1.2
     padding = font_size * 0.1
 
     # Adjust position based on text-anchor
