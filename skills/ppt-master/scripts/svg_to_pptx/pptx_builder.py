@@ -29,8 +29,13 @@ from .pptx_notes import (
 from .pptx_slide_xml import (
     ANIMATIONS_AVAILABLE, TRANSITIONS,
     create_slide_xml_with_svg, create_slide_rels_xml,
+    link_shape_xml,
 )
 from .svg_link_extractor import extract_links
+
+_HYPERLINK_REL_TYPE = (
+    'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
+)
 
 # Re-import create_transition_xml only if available
 try:
@@ -206,6 +211,45 @@ def create_pptx_with_native_svg(
                         )
                     )
 
+                    # Inject SVG hyperlinks as transparent overlay shapes
+                    # (must precede transition/timing injection so the spTree
+                    # is finalized before <p:transition>/<p:timing> are appended).
+                    raw_links = extract_links(svg_path, width_emu, height_emu)
+                    if raw_links:
+                        used_rids = [
+                            int(re.match(r'rId(\d+)', r['id']).group(1))
+                            for r in rel_entries
+                            if re.match(r'rId(\d+)', r['id'])
+                        ]
+                        next_rid = max(used_rids, default=1) + 1
+                        used_shape_ids = [
+                            int(m.group(1))
+                            for m in re.finditer(r'<p:cNvPr id="(\d+)"', slide_xml)
+                        ]
+                        next_shape_id = max(used_shape_ids, default=1) + 1
+                        link_shapes = []
+                        for lk in raw_links:
+                            rid = f'rId{next_rid}'
+                            next_rid += 1
+                            rel_entries.append({
+                                'id': rid,
+                                'type': _HYPERLINK_REL_TYPE,
+                                'target': lk['href'],
+                                'target_mode': 'External',
+                            })
+                            link_shapes.append(link_shape_xml(
+                                shape_id=next_shape_id,
+                                href_rid=rid,
+                                x=lk['x'], y=lk['y'],
+                                w=lk['w'], h=lk['h'],
+                            ))
+                            next_shape_id += 1
+                        if link_shapes:
+                            slide_xml = slide_xml.replace(
+                                '</p:spTree>',
+                                '\n' + '\n'.join(link_shapes) + '\n      </p:spTree>',
+                            )
+
                     # Order matters: OOXML schema requires <p:transition>
                     # to precede <p:timing> inside <p:sld>. Both use the same
                     # </p:sld> string-replace anchor, so transition must be
@@ -277,9 +321,13 @@ def create_pptx_with_native_svg(
 
                     extra_rels = ''
                     for rel in rel_entries:
+                        mode_attr = (
+                            f' TargetMode="{rel["target_mode"]}"'
+                            if rel.get('target_mode') else ''
+                        )
                         extra_rels += (
                             f'\n  <Relationship Id="{rel["id"]}" '
-                            f'Type="{rel["type"]}" Target="{rel["target"]}"/>'
+                            f'Type="{rel["type"]}" Target="{rel["target"]}"{mode_attr}/>'
                         )
 
                     rels_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

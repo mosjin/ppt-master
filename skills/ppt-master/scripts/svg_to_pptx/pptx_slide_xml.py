@@ -11,6 +11,11 @@ except ImportError:
     TRANSITIONS = {}
 
 
+def link_shape_xml(shape_id: int, href_rid: str, x: int, y: int, w: int, h: int) -> str:
+    """Public wrapper — used by both legacy SVG and native shapes paths."""
+    return _link_shape_xml(shape_id, href_rid, x, y, w, h)
+
+
 def _link_shape_xml(shape_id: int, href_rid: str, x: int, y: int, w: int, h: int) -> str:
     """Return DrawingML XML for a transparent clickable rectangle hyperlink."""
     return f'''      <p:sp>
