@@ -30,6 +30,7 @@ from .pptx_slide_xml import (
     ANIMATIONS_AVAILABLE, TRANSITIONS,
     create_slide_xml_with_svg, create_slide_rels_xml,
 )
+from .svg_link_extractor import extract_links
 
 # Re-import create_transition_xml only if available
 try:
@@ -318,6 +319,19 @@ def create_pptx_with_native_svg(
                                 print(f"  [{i}/{len(svg_files)}] {svg_path.name} - PNG generation failed, using pure SVG")
                             svg_rid = 'rId2'
 
+                    # Extract SVG hyperlinks and assign rIds (starting after rId3)
+                    raw_links = extract_links(svg_path, width_emu, height_emu)
+                    link_rels = []
+                    link_regions = []
+                    for li, lk in enumerate(raw_links):
+                        rid = f'rId{4 + li}'
+                        link_rels.append({'rid': rid, 'href': lk['href']})
+                        link_regions.append({
+                            'href_rid': rid,
+                            'x': lk['x'], 'y': lk['y'],
+                            'w': lk['w'], 'h': lk['h'],
+                        })
+
                     slide_xml_path = extract_dir / 'ppt' / 'slides' / f'slide{slide_num}.xml'
                     slide_xml = create_slide_xml_with_svg(
                         slide_num,
@@ -327,6 +341,7 @@ def create_pptx_with_native_svg(
                         transition_duration=transition_duration,
                         auto_advance=auto_advance,
                         use_compat_mode=(use_compat_mode and slide_has_png),
+                        link_regions=link_regions or None,
                     )
                     with open(slide_xml_path, 'w', encoding='utf-8') as f:
                         f.write(slide_xml)
@@ -338,6 +353,7 @@ def create_pptx_with_native_svg(
                         png_rid=png_rid, png_filename=png_filename,
                         svg_rid=svg_rid, svg_filename=svg_filename,
                         use_compat_mode=(use_compat_mode and slide_has_png),
+                        link_rels=link_rels or None,
                     )
                     with open(rels_path, 'w', encoding='utf-8') as f:
                         f.write(rels_xml)

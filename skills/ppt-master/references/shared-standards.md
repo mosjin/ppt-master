@@ -685,7 +685,116 @@ Back2: (370-8.1+3.7, 430-8.8-3.4) = (365.6, 417.8)
 
 ---
 
-## 8. Project Directory Structure
+## 8. Code Listing Standard (Issue #36)
+
+Code blocks in teaching decks must satisfy three requirements: readable contrast, accurate indentation, and consistent color semantics. Violating any one makes the slide unusable for learning.
+
+---
+
+### 8.1 Color Palette — IntelliJ Classic Dark
+
+Use **IntelliJ Classic Dark** for all syntax-highlighted code blocks. Do NOT use Catppuccin Mocha or ad-hoc colors.
+
+| Role | HEX | Usage |
+|------|-----|-------|
+| Background | `#2B2B2B` | `<rect>` code block background |
+| Default text | `#A9B7C6` | identifiers, punctuation, plain text |
+| Keyword | `#CC7832` | `int`, `return`, `struct`, `using`, `for`, `if`, etc. |
+| String literal | `#6A8759` | `"YES"`, `"NO"`, string content |
+| Number literal | `#6897BB` | integer/float constants (`200005`, `0`, `1`) |
+| Comment | `#808080` | `//` and `/* */` (add `font-style="italic"` optionally) |
+| Preprocessor | `#BBB529` | `#include`, `#define`, `#pragma` |
+| Function call / name | `#FFC66D` | function names at call sites (`find`, `sort`, `cin`) |
+| Line number gutter | `#606366` | dim gutter numbers, separator |
+
+```xml
+<!-- IntelliJ Classic Dark — code block template -->
+<rect x="60" y="150" width="730" height="500" rx="8" fill="#2B2B2B"/>
+
+<!-- Line 1: #include <bits/stdc++.h> -->
+<text x="80" y="178" font-family="Consolas,&quot;Courier New&quot;,monospace" font-size="13" fill="#606366"> 1</text>
+<text x="110" y="178" font-family="Consolas,&quot;Courier New&quot;,monospace" font-size="13" fill="#BBB529">#include</text>
+<text x="178" y="178" font-family="Consolas,&quot;Courier New&quot;,monospace" font-size="13" fill="#6A8759"> &lt;bits/stdc++.h&gt;</text>
+```
+
+---
+
+### 8.2 Indentation — Explicit x-offset (MANDATORY)
+
+**SVG `<text>` elements silently collapse leading whitespace** (`xml:space="default"`). This means `"  int"` (2 spaces + int) at `x=110` renders identically to `"int"` at `x=110` — the leading spaces disappear.
+
+**Rule**: NEVER use leading space characters for indentation. Always use explicit `x` attribute positioning.
+
+**Indent grid at 13px Consolas** (≈ 7.8 px/char):
+
+| Indent level | Spaces | x offset from code start |
+|---|---|---|
+| 0 (global scope) | 0 | `x=110` |
+| 1 (struct/function body) | 2 | `x=126` (`110 + 2×7.8`) |
+| 2 (for/if body) | 4 | `x=141` (`110 + 4×7.8`) |
+| 3 (nested if/for) | 6 | `x=157` (`110 + 6×7.8`) |
+| 4 (deep nesting) | 8 | `x=172` (`110 + 8×7.8`) |
+
+> At `font-size="12"` use 7.2 px/char; at `font-size="14"` use 8.4 px/char. Scale proportionally.
+
+```xml
+<!-- WRONG — leading spaces vanish in SVG -->
+<text x="110" y="261" font-size="13" fill="#CC7832">  int</text>
+
+<!-- CORRECT — x-offset creates indentation -->
+<text x="126" y="261" font-size="13" fill="#CC7832">int</text>
+<text x="156" y="261" font-size="13" fill="#A9B7C6"> x, y, e;</text>
+```
+
+For **continuation tokens on the same line** (different colors), chain `<text>` elements starting from where the previous one ends. Calculate width: `len(text_content) × char_width_px`.
+
+---
+
+### 8.3 Annotation Badges — Contrast Rules
+
+Annotation badges (numbered circles or rounded rectangles) that overlay or sit beside code MUST meet minimum contrast:
+
+| Background color | Required text color | Forbidden |
+|---|---|---|
+| Bright/saturated color (`#CC7832`, `#E8843A`, `#3D9E6D`, `#4A6FA5`) | `#FFFFFF` (white) | Dark text on bright bg |
+| Dark color (`#1A1A2E`, `#2B2B2B`, `#1E1E2E`) | `#FFFFFF` or `#CDD6F4` | Grey on dark |
+| Light/white background | `#1A1A2E` or `#333333` | Light-on-light |
+
+For numbered badge circles used as line annotations:
+```xml
+<!-- Annotation circle: bright bg → white text -->
+<circle cx="820" cy="240" r="12" fill="#CC7832"/>
+<text x="820" y="245" font-size="11" fill="#FFFFFF" text-anchor="middle" font-weight="bold">1</text>
+```
+
+---
+
+### 8.4 Full Example — 3-line Code Block with Indentation
+
+```xml
+<rect x="60" y="130" width="720" height="140" rx="8" fill="#2B2B2B"/>
+
+<!-- Line 5: struct Query { -->
+<text x="80" y="158" font-family="Consolas,monospace" font-size="13" fill="#606366"> 5</text>
+<text x="110" y="158" font-family="Consolas,monospace" font-size="13" fill="#CC7832">struct</text>
+<text x="163" y="158" font-family="Consolas,monospace" font-size="13" fill="#A9B7C6"> Query {</text>
+
+<!-- Line 6:   int x, y, e; };   (1 indent level → x=126) -->
+<text x="80" y="175" font-family="Consolas,monospace" font-size="13" fill="#606366"> 6</text>
+<text x="126" y="175" font-family="Consolas,monospace" font-size="13" fill="#CC7832">int</text>
+<text x="157" y="175" font-family="Consolas,monospace" font-size="13" fill="#A9B7C6"> x, y, e; };</text>
+
+<!-- Line 7: int find(int x) { -->
+<text x="80" y="192" font-family="Consolas,monospace" font-size="13" fill="#606366"> 7</text>
+<text x="110" y="192" font-family="Consolas,monospace" font-size="13" fill="#CC7832">int</text>
+<text x="141" y="192" font-family="Consolas,monospace" font-size="13" fill="#FFC66D"> find(</text>
+<text x="189" y="192" font-family="Consolas,monospace" font-size="13" fill="#CC7832">int</text>
+<text x="220" y="192" font-family="Consolas,monospace" font-size="13" fill="#A9B7C6"> x) {</text>
+```
+
+---
+
+## 9. Project Directory Structure
 
 ```
 project/

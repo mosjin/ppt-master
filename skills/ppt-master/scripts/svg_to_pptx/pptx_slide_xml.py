@@ -11,6 +11,26 @@ except ImportError:
     TRANSITIONS = {}
 
 
+def _link_shape_xml(shape_id: int, href_rid: str, x: int, y: int, w: int, h: int) -> str:
+    """Return DrawingML XML for a transparent clickable rectangle hyperlink."""
+    return f'''      <p:sp>
+        <p:nvSpPr>
+          <p:cNvPr id="{shape_id}" name="Link_{shape_id}">
+            <a:hlinkClick r:id="{href_rid}"/>
+          </p:cNvPr>
+          <p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>
+          <p:nvPr/>
+        </p:nvSpPr>
+        <p:spPr>
+          <a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm>
+          <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          <a:noFill/>
+          <a:ln><a:noFill/></a:ln>
+        </p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody>
+      </p:sp>'''
+
+
 def create_slide_xml_with_svg(
     slide_num: int,
     png_rid: str,
@@ -21,6 +41,7 @@ def create_slide_xml_with_svg(
     transition_duration: float = 0.5,
     auto_advance: float | None = None,
     use_compat_mode: bool = True,
+    link_regions: list[dict] | None = None,
 ) -> str:
     """Create slide XML containing an SVG image.
 
@@ -34,6 +55,7 @@ def create_slide_xml_with_svg(
         transition_duration: Transition duration in seconds.
         auto_advance: Auto-advance interval in seconds.
         use_compat_mode: Whether to use compatibility mode (PNG + SVG dual format).
+        link_regions: Optional list of {href_rid, x, y, w, h} for hyperlink overlays.
     """
     transition_xml = ''
     if transition and ANIMATIONS_AVAILABLE:
@@ -42,6 +64,20 @@ def create_slide_xml_with_svg(
             duration=transition_duration,
             advance_after=auto_advance,
         )
+
+    link_shapes_xml = ''
+    if link_regions:
+        parts = []
+        for idx, lr in enumerate(link_regions):
+            parts.append(
+                '\n' + _link_shape_xml(
+                    shape_id=10 + idx,
+                    href_rid=lr['href_rid'],
+                    x=lr['x'], y=lr['y'],
+                    w=lr['w'], h=lr['h'],
+                )
+            )
+        link_shapes_xml = ''.join(parts)
 
     if use_compat_mode:
         blip_xml = f'''<a:blip r:embed="{png_rid}">
@@ -96,7 +132,7 @@ def create_slide_xml_with_svg(
             <a:avLst/>
           </a:prstGeom>
         </p:spPr>
-      </p:pic>
+      </p:pic>{link_shapes_xml}
     </p:spTree>
   </p:cSld>
   <p:clrMapOvr>
@@ -105,12 +141,18 @@ def create_slide_xml_with_svg(
 </p:sld>'''
 
 
+_HYPERLINK_REL_TYPE = (
+    'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
+)
+
+
 def create_slide_rels_xml(
     png_rid: str,
     png_filename: str,
     svg_rid: str,
     svg_filename: str,
     use_compat_mode: bool = True,
+    link_rels: list[dict] | None = None,
 ) -> str:
     """Create slide relationship file XML.
 
@@ -120,17 +162,27 @@ def create_slide_rels_xml(
         svg_rid: SVG relationship ID.
         svg_filename: SVG filename.
         use_compat_mode: Whether to use compatibility mode.
+        link_rels: Optional list of {rid, href} for hyperlink relationships.
     """
+    extra = ''
+    if link_rels:
+        for lr in link_rels:
+            extra += (
+                f'\n  <Relationship Id="{lr["rid"]}" '
+                f'Type="{_HYPERLINK_REL_TYPE}" '
+                f'Target="{lr["href"]}" TargetMode="External"/>'
+            )
+
     if use_compat_mode:
         return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
   <Relationship Id="{png_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{png_filename}"/>
-  <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>
+  <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>{extra}
 </Relationships>'''
     else:
         return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
-  <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>
+  <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>{extra}
 </Relationships>'''
