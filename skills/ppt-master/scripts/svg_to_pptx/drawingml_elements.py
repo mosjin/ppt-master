@@ -670,25 +670,36 @@ def _override_run_attrs(
 def _collect_tspan_runs(
     tspan: ET.Element,
     inherited_attrs: dict[str, Any],
+    preserve_space: bool = False,
 ) -> list[dict[str, Any]]:
     """Recursively turn a tspan subtree into runs, propagating styling through nested tspans.
 
     Order: tspan.text → (each nested child tspan's runs → that child's tail under THIS tspan's attrs).
+
+    `preserve_space` propagates from the enclosing <text xml:space="preserve">; tspans
+    can override per-element. Mandatory for code listings whose token boundaries
+    rely on trailing spaces (e.g. "int " vs "(").
     """
     runs: list[dict[str, Any]] = []
     own_attrs = _override_run_attrs(inherited_attrs, tspan)
+    own_preserve = preserve_space
+    own_space_attr = tspan.get('{http://www.w3.org/XML/1998/namespace}space')
+    if own_space_attr == 'preserve':
+        own_preserve = True
+    elif own_space_attr == 'default':
+        own_preserve = False
 
     if tspan.text:
-        t = _normalize_text(tspan.text)
+        t = _normalize_text(tspan.text, preserve_space=own_preserve)
         if t:
             runs.append({**own_attrs, 'text': t})
 
     for child in tspan:
         child_tag = child.tag.replace(f'{{{SVG_NS}}}', '')
         if child_tag == 'tspan':
-            runs.extend(_collect_tspan_runs(child, own_attrs))
+            runs.extend(_collect_tspan_runs(child, own_attrs, preserve_space=own_preserve))
             if child.tail:
-                t = _normalize_text(child.tail)
+                t = _normalize_text(child.tail, preserve_space=own_preserve)
                 if t:
                     runs.append({**own_attrs, 'text': t})
 
@@ -719,7 +730,7 @@ def _build_text_runs(
     for child in elem:
         child_tag = child.tag.replace(f'{{{SVG_NS}}}', '')
         if child_tag == 'tspan':
-            runs.extend(_collect_tspan_runs(child, parent_attrs))
+            runs.extend(_collect_tspan_runs(child, parent_attrs, preserve_space=preserve))
             if child.tail:
                 t = _normalize_text(child.tail, preserve_space=preserve)
                 if t:
