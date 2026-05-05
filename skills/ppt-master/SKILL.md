@@ -162,6 +162,37 @@ Hint, not question — do NOT block. Skip entirely on weak/ambiguous match.
 
 🚧 **GATE**: Step 3 complete; default free-design path taken, or (if triggered) template files copied into the project.
 
+#### Step 4.0 — Domain Reference Auto-load (v0.5+)
+
+**Before** the Eight Confirmations, scan the source markdown's first 5 lines for domain trigger keywords. If matched, auto-load the domain's design system reference and use its predefined values for the eight confirmations (skip BLOCKING — values are pre-approved).
+
+```python
+import re
+from pathlib import Path
+
+SKILL_DIR = Path(__file__).parent  # ppt-master skill dir
+domain_registry = SKILL_DIR / "references/_domain_registry.md"
+sources = list((Path("<project_path>/sources").glob("*.md")))
+if sources and domain_registry.exists():
+    head = "\n".join(sources[0].read_text(encoding="utf-8").splitlines()[:5])
+    # Parse domain_registry.md for (regex, ref_filename) pairs
+    for m in re.finditer(r"\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|", domain_registry.read_text(encoding="utf-8")):
+        domain, regex_pat, ref_file = m.group(1).strip(), m.group(2), m.group(3)
+        if re.search(regex_pat, head):
+            ref_path = SKILL_DIR / "references" / ref_file
+            if ref_path.exists():
+                print(f"🎯 Domain matched: {domain} → loading {ref_file}")
+                # Read the reference; its §XI provides eight-confirmation defaults
+                # → skip Step 4 BLOCKING; use defaults from reference
+                break
+```
+
+**Effect**: when the source markdown is from a known domain (eduforge / future: physics / chemistry), Strategist uses the domain's design system without the user being asked the eight confirmations again. Standalone ppt-master users get domain styling free; domain skill (eduforge) users get one-command end-to-end PPT.
+
+**See**: `references/_domain_registry.md` for registered domains and trigger regex.
+
+#### Step 4.1 — read role + template (when no domain matched)
+
 First, read the role definition:
 ```
 Read references/strategist.md
