@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import math
 import re
 import base64
@@ -58,8 +59,115 @@ def _wrap_shape(
 # rect
 # ---------------------------------------------------------------------------
 
+# Cubic-Bézier control distance for approximating a quarter circle / ellipse.
+# Distance from corner to control point along the tangent, expressed as a
+# fraction of the radius. Standard "magic number" for a 90° arc (max error
+# ~0.027% of the radius).
+_BEZIER_QUARTER_K = 0.5522847498
+
+
+def _build_round_rect_custgeom(w: float, h: float, rx: float, ry: float) -> str:
+    """Build a DrawingML ``custGeom`` for a rectangle with elliptical corners.
+
+    Used when ``<rect>`` has rx ≠ ry, which DrawingML's preset ``roundRect``
+    cannot express (the preset takes a single ``adj`` shared by all four
+    corners and is implicitly symmetric). Each 90° elliptical arc is
+    approximated by one cubic Bézier — within 0.03% of the true ellipse, far
+    below any visible threshold at slide resolution.
+
+    Trade-off vs. the symmetric ``prstGeom roundRect`` path: this geometry
+    is custom, so PowerPoint's yellow corner-radius handle is gone and the
+    shape can no longer be retuned in-place. That matches the underlying
+    reality — rx ≠ ry has no single "radius" to drag — and remains far
+    better than the previous behaviour (silently dropping all corners and
+    rendering a hard rectangle).
+
+    Args:
+        w, h:   Pixel dimensions of the rectangle (post ctx-scale).
+        rx, ry: Pixel corner radii along x and y. Will be clamped to half
+                of w / h respectively per the SVG spec.
+
+    Returns:
+        A complete ``<a:custGeom>...</a:custGeom>`` XML string. Coordinates
+        are emitted in EMU within a path-local coordinate system whose
+        ``w`` / ``h`` equal the rectangle's pixel-converted dimensions.
+    """
+    # Clamp radii (SVG spec): rx > w/2 collapses to a half-circle end.
+    rx = min(max(rx, 0.0), w / 2)
+    ry = min(max(ry, 0.0), h / 2)
+
+    width_emu = px_to_emu(w)
+    height_emu = px_to_emu(h)
+    rx_emu = px_to_emu(rx)
+    ry_emu = px_to_emu(ry)
+
+    cx_off = int(round(rx_emu * _BEZIER_QUARTER_K))
+    cy_off = int(round(ry_emu * _BEZIER_QUARTER_K))
+
+    def pt(x: int, y: int) -> str:
+        return f'<a:pt x="{x}" y="{y}"/>'
+
+    def cubic(c1: tuple[int, int], c2: tuple[int, int], end: tuple[int, int]) -> str:
+        return (
+            f'<a:cubicBezTo>{pt(*c1)}{pt(*c2)}{pt(*end)}</a:cubicBezTo>'
+        )
+
+    # Path traversed clockwise, starting just past the top-left corner.
+    parts = [
+        f'<a:moveTo>{pt(rx_emu, 0)}</a:moveTo>',
+        f'<a:lnTo>{pt(width_emu - rx_emu, 0)}</a:lnTo>',
+        # Top-right corner: (W-Rx, 0) → (W, Ry)
+        cubic(
+            (width_emu - rx_emu + cx_off, 0),
+            (width_emu, ry_emu - cy_off),
+            (width_emu, ry_emu),
+        ),
+        f'<a:lnTo>{pt(width_emu, height_emu - ry_emu)}</a:lnTo>',
+        # Bottom-right corner: (W, H-Ry) → (W-Rx, H)
+        cubic(
+            (width_emu, height_emu - ry_emu + cy_off),
+            (width_emu - rx_emu + cx_off, height_emu),
+            (width_emu - rx_emu, height_emu),
+        ),
+        f'<a:lnTo>{pt(rx_emu, height_emu)}</a:lnTo>',
+        # Bottom-left corner: (Rx, H) → (0, H-Ry)
+        cubic(
+            (rx_emu - cx_off, height_emu),
+            (0, height_emu - ry_emu + cy_off),
+            (0, height_emu - ry_emu),
+        ),
+        f'<a:lnTo>{pt(0, ry_emu)}</a:lnTo>',
+        # Top-left corner: (0, Ry) → (Rx, 0)
+        cubic(
+            (0, ry_emu - cy_off),
+            (rx_emu - cx_off, 0),
+            (rx_emu, 0),
+        ),
+        '<a:close/>',
+    ]
+
+    path_xml = '\n'.join(parts)
+    return (
+        '<a:custGeom>'
+        '<a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/>'
+        '<a:rect l="l" t="t" r="r" b="b"/>'
+        f'<a:pathLst><a:path w="{width_emu}" h="{height_emu}">'
+        f'\n{path_xml}\n'
+        '</a:path></a:pathLst>'
+        '</a:custGeom>'
+    )
+
+
 def convert_rect(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
-    """Convert SVG <rect> to DrawingML shape."""
+    """Convert SVG <rect> to DrawingML shape.
+
+    Symmetric rounded corners (rx == ry) are emitted as ``prstGeom roundRect``
+    so PowerPoint treats them as a native rounded-rectangle shape: the yellow
+    adjustment handle stays draggable, and "Reset Picture / Shape" works as
+    expected. Elliptical corners (rx != ry) fall back to plain rect geometry
+    for now — current corpora contain none, but the branch keeps callers from
+    silently producing distorted custom geometry if one ever appears.
+    """
     x = ctx_x(_f(elem.get('x')), ctx)
     y = ctx_y(_f(elem.get('y')), ctx)
     w = ctx_w(_f(elem.get('width')), ctx)
@@ -67,6 +175,20 @@ def convert_rect(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 
     if w <= 0 or h <= 0:
         return None
+
+    # SVG spec: when only one of rx/ry is specified, the other inherits its
+    # value. Real-world svg_output decks always write only `rx`, so ry must
+    # be inferred to keep round corners from collapsing to zero on one axis.
+    rx_attr = elem.get('rx')
+    ry_attr = elem.get('ry')
+    rx_raw = _f(rx_attr) if rx_attr is not None else 0.0
+    ry_raw = _f(ry_attr) if ry_attr is not None else 0.0
+    if rx_attr is not None and ry_attr is None:
+        ry_raw = rx_raw
+    elif ry_attr is not None and rx_attr is None:
+        rx_raw = ry_raw
+    rx = rx_raw * ctx.scale_x
+    ry = ry_raw * ctx.scale_y
 
     fill_op = get_fill_opacity(elem, ctx)
     stroke_op = get_stroke_opacity(elem, ctx)
@@ -85,7 +207,29 @@ def convert_rect(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
         if r_match:
             rot = int(float(r_match.group(1)) * ANGLE_UNIT)
 
-    geom = '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+    if rx > 0 and abs(rx - ry) < 0.5:
+        # Symmetric corners → native PowerPoint rounded rectangle. adj is
+        # the corner radius as a fraction of the shorter side, in 1/1000-
+        # percent units, capped at 50000 (= radius equals half the shorter
+        # side, i.e. capsule end).
+        short_side = min(w, h)
+        radius = min(rx, short_side / 2)
+        adj = max(0, min(50000, int(round(radius / short_side * 100000))))
+        geom = (
+            '<a:prstGeom prst="roundRect">'
+            f'<a:avLst><a:gd name="adj" fmla="val {adj}"/></a:avLst>'
+            '</a:prstGeom>'
+        )
+    elif rx > 0 or ry > 0:
+        # Asymmetric corners (rx != ry) → DrawingML has no preset for
+        # elliptical-corner rectangles, so emit a custGeom with one cubic
+        # Bézier per 90° arc. We lose the prstGeom roundRect adjustment
+        # handle, but symmetric and asymmetric cases now both render with
+        # rounded corners instead of one of them silently flattening to
+        # a hard rectangle.
+        geom = _build_round_rect_custgeom(w, h, rx, ry)
+    else:
+        geom = '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
 
     shape_id = ctx.next_id()
     off_x = px_to_emu(x)
@@ -628,18 +772,28 @@ def convert_polyline(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | Non
 # text
 # ---------------------------------------------------------------------------
 
-def _normalize_text(text: str, preserve_space: bool = False) -> str:
-    """Collapse internal whitespace/newlines into a single space, strip ends.
+def _normalize_text(text: str, *, preserve_space: bool = False) -> str:
+    """Collapse runs of whitespace into a single space; do NOT strip the ends.
 
-    When `preserve_space` is True (caller has xml:space="preserve" or is
-    inside such an element), keep the text byte-for-byte — code listings
-    rely on leading spaces for indentation.
+    Stripping at this layer would silently delete the inline boundary
+    spaces in nested-tspan structures like
+    ``<tspan>foo <tspan>bar</tspan> baz</tspan>``: the parent's text
+    ("foo ") and the child's tail (" baz") would each lose the only space
+    that separated them from the inner run, producing "foobarbaz".
+
+    The paragraph's overall leading / trailing whitespace is removed once
+    in ``_build_text_runs`` after all inline runs have been concatenated.
     """
     if not text:
         return ''
     if preserve_space:
         return text
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'\s+', ' ', text)
+
+
+def _preserves_space(elem: ET.Element) -> bool:
+    xml_space = elem.get('{http://www.w3.org/XML/1998/namespace}space') or elem.get('xml:space')
+    return xml_space == 'preserve'
 
 
 def _override_run_attrs(
@@ -682,24 +836,19 @@ def _collect_tspan_runs(
     """
     runs: list[dict[str, Any]] = []
     own_attrs = _override_run_attrs(inherited_attrs, tspan)
-    own_preserve = preserve_space
-    own_space_attr = tspan.get('{http://www.w3.org/XML/1998/namespace}space')
-    if own_space_attr == 'preserve':
-        own_preserve = True
-    elif own_space_attr == 'default':
-        own_preserve = False
+    child_preserve_space = preserve_space or _preserves_space(tspan)
 
     if tspan.text:
-        t = _normalize_text(tspan.text, preserve_space=own_preserve)
+        t = _normalize_text(tspan.text, preserve_space=child_preserve_space)
         if t:
             runs.append({**own_attrs, 'text': t})
 
     for child in tspan:
         child_tag = child.tag.replace(f'{{{SVG_NS}}}', '')
         if child_tag == 'tspan':
-            runs.extend(_collect_tspan_runs(child, own_attrs, preserve_space=own_preserve))
+            runs.extend(_collect_tspan_runs(child, own_attrs, child_preserve_space))
             if child.tail:
-                t = _normalize_text(child.tail, preserve_space=own_preserve)
+                t = _normalize_text(child.tail, preserve_space=child_preserve_space)
                 if t:
                     runs.append({**own_attrs, 'text': t})
 
@@ -720,21 +869,28 @@ def _build_text_runs(
     (used for code listing indentation) survives intact.
     """
     runs: list[dict[str, Any]] = []
-    preserve = elem.get('{http://www.w3.org/XML/1998/namespace}space') == 'preserve'
+    preserve_space = _preserves_space(elem)
 
     if elem.text:
-        t = _normalize_text(elem.text, preserve_space=preserve)
+        t = _normalize_text(elem.text, preserve_space=preserve_space)
         if t:
             runs.append({**parent_attrs, 'text': t})
 
     for child in elem:
         child_tag = child.tag.replace(f'{{{SVG_NS}}}', '')
         if child_tag == 'tspan':
-            runs.extend(_collect_tspan_runs(child, parent_attrs, preserve_space=preserve))
+            runs.extend(_collect_tspan_runs(child, parent_attrs, preserve_space))
             if child.tail:
-                t = _normalize_text(child.tail, preserve_space=preserve)
+                t = _normalize_text(child.tail, preserve_space=preserve_space)
                 if t:
                     runs.append({**parent_attrs, 'text': t})
+
+    # Strip the paragraph's overall leading / trailing whitespace once unless
+    # xml:space="preserve" asks us to keep source indentation.
+    if runs and not preserve_space:
+        runs[0]['text'] = runs[0]['text'].lstrip(' ')
+        runs[-1]['text'] = runs[-1]['text'].rstrip(' ')
+        runs = [r for r in runs if r['text']]
 
     return runs
 
@@ -775,6 +931,8 @@ def _build_run_xml(
             alpha_xml = f'<a:alpha val="{int(opacity * 100000)}"/>'
         fill_xml = f'<a:solidFill><a:srgbClr val="{fill}">{alpha_xml}</a:srgbClr></a:solidFill>'
 
+    space_attr = ' xml:space="preserve"' if text != text.strip() or '  ' in text else ''
+
     return f'''<a:r>
 <a:rPr lang="zh-CN" sz="{sz}"{b_attr}{i_attr}{u_attr}{strike_attr} dirty="0">
 {fill_xml}
@@ -783,7 +941,7 @@ def _build_run_xml(
 <a:ea typeface="{_xml_escape(fonts['ea'])}"/>
 <a:cs typeface="{_xml_escape(fonts['latin'])}"/>
 </a:rPr>
-<a:t>{_xml_escape(text)}</a:t>
+<a:t{space_attr}>{_xml_escape(text)}</a:t>
 </a:r>'''
 
 
@@ -1102,6 +1260,159 @@ def _resolve_clip_geometry(
 # image
 # ---------------------------------------------------------------------------
 
+def _read_image_size(data: bytes) -> tuple[int | None, int | None]:
+    """Read intrinsic image dimensions (width, height) from raw bytes.
+
+    Used by ``convert_image`` to translate SVG ``preserveAspectRatio`` into
+    DrawingML ``<a:srcRect>`` so the original image is preserved and remains
+    croppable inside PowerPoint.
+
+    Returns ``(None, None)`` on any failure — callers fall back to the
+    legacy stretch behaviour.
+    """
+    try:
+        from PIL import Image, UnidentifiedImageError  # type: ignore
+    except ImportError:
+        return (None, None)
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return img.size
+    except (UnidentifiedImageError, OSError, ValueError):
+        return (None, None)
+
+
+def _compute_slice_src_rect(
+    img_w: float, img_h: float,
+    box_w: float, box_h: float,
+    align: str,
+) -> tuple[int, int, int, int] | None:
+    """Compute DrawingML ``<a:srcRect>`` (l, t, r, b) for SVG slice mode.
+
+    SVG ``preserveAspectRatio="<align> slice"`` means: scale the image so it
+    fully covers the box (CSS object-fit: cover) and crop the overflow at the
+    given alignment anchor. DrawingML ``srcRect`` expresses the same intent
+    by specifying which sub-rectangle of the source image to display, in
+    units of 1/1000 of a percent (0–100000).
+
+    Returns ``None`` when no cropping is required (image and box already
+    match) or when inputs are degenerate.
+    """
+    if img_w <= 0 or img_h <= 0 or box_w <= 0 or box_h <= 0:
+        return None
+
+    # Scale factor that makes the image cover the box (cover semantics).
+    scale = max(box_w / img_w, box_h / img_h)
+    visible_w = box_w / scale  # ≤ img_w
+    visible_h = box_h / scale  # ≤ img_h
+
+    if abs(visible_w - img_w) < 0.5 and abs(visible_h - img_h) < 0.5:
+        return None  # No crop needed
+
+    crop_w_total = max(0.0, img_w - visible_w)
+    crop_h_total = max(0.0, img_h - visible_h)
+
+    x_anchor = {'xMin': 0.0, 'xMid': 0.5, 'xMax': 1.0}.get(align[:4], 0.5)
+    y_anchor = {'YMin': 0.0, 'YMid': 0.5, 'YMax': 1.0}.get(align[4:], 0.5)
+
+    crop_l = crop_w_total * x_anchor
+    crop_r = crop_w_total - crop_l
+    crop_t = crop_h_total * y_anchor
+    crop_b = crop_h_total - crop_t
+
+    l = max(0, min(100000, int(round(crop_l / img_w * 100000))))
+    t = max(0, min(100000, int(round(crop_t / img_h * 100000))))
+    r = max(0, min(100000, int(round(crop_r / img_w * 100000))))
+    b = max(0, min(100000, int(round(crop_b / img_h * 100000))))
+
+    return (l, t, r, b)
+
+
+def _resolve_image_src_rect(
+    elem: ET.Element,
+    img_data: bytes,
+    box_w: float, box_h: float,
+) -> str:
+    """Build ``<a:srcRect .../>`` XML for an SVG <image> based on its
+    preserveAspectRatio. Returns an empty string when no srcRect is needed
+    (meet mode, none mode, or already-aligned content).
+
+    Slice mode is resolved into a srcRect so the original image is embedded
+    intact and PowerPoint's crop tool / "Reset Picture" continue to work.
+    Meet mode is handled separately by ``_resolve_image_meet_fit`` (which
+    shrinks the picture frame to match image aspect ratio); none mode keeps
+    the legacy stretch behaviour intentionally.
+    """
+    par = (elem.get('preserveAspectRatio') or 'xMidYMid meet').strip()
+    parts = par.split()
+    align = parts[0] if parts else 'xMidYMid'
+    mode = parts[1] if len(parts) > 1 else 'meet'
+
+    if align == 'none' or mode != 'slice':
+        return ''  # meet handled by frame fit; none → stretch is correct per SVG spec
+
+    img_w, img_h = _read_image_size(img_data)
+    if img_w is None or img_h is None:
+        return ''
+
+    rect = _compute_slice_src_rect(float(img_w), float(img_h), box_w, box_h, align)
+    if rect is None:
+        return ''
+
+    l, t, r, b = rect
+    return f'<a:srcRect l="{l}" t="{t}" r="{r}" b="{b}"/>'
+
+
+def _resolve_image_meet_fit(
+    elem: ET.Element,
+    img_data: bytes,
+    box_w: float, box_h: float,
+) -> tuple[float, float, float, float] | None:
+    """For SVG ``preserveAspectRatio="<align> meet"``, compute the letterboxed
+    sub-rectangle ``(dx, dy, fit_w, fit_h)`` inside the original box that
+    matches the image's intrinsic aspect ratio.
+
+    PowerPoint has no native ``meet`` semantic — ``<a:stretch><a:fillRect/>``
+    fills the entire frame and would distort the image whenever the SVG
+    container ratio differs from the source image ratio. The fix is to shrink
+    the ``<p:pic>`` frame itself (off + ext) so the frame and image share an
+    aspect ratio; the stretch then fills a correctly-shaped frame.
+
+    Returns ``None`` when the adjustment is not applicable:
+      - mode is ``slice`` (handled by srcRect path)
+      - align is ``none`` (SVG spec says: stretch — do not adjust)
+      - intrinsic image dimensions cannot be read
+      - frame already matches image ratio (no-op)
+    """
+    par = (elem.get('preserveAspectRatio') or 'xMidYMid meet').strip()
+    parts = par.split()
+    align = parts[0] if parts else 'xMidYMid'
+    mode = parts[1] if len(parts) > 1 else 'meet'
+
+    if align == 'none' or mode == 'slice':
+        return None
+
+    img_w, img_h = _read_image_size(img_data)
+    if img_w is None or img_h is None or img_w <= 0 or img_h <= 0:
+        return None
+    if box_w <= 0 or box_h <= 0:
+        return None
+
+    scale = min(box_w / img_w, box_h / img_h)
+    fit_w = img_w * scale
+    fit_h = img_h * scale
+
+    if abs(fit_w - box_w) < 0.5 and abs(fit_h - box_h) < 0.5:
+        return None  # already matches — no adjustment
+
+    x_anchor = {'xMin': 0.0, 'xMid': 0.5, 'xMax': 1.0}.get(align[:4], 0.5)
+    y_anchor = {'YMin': 0.0, 'YMid': 0.5, 'YMax': 1.0}.get(align[4:], 0.5)
+
+    dx = (box_w - fit_w) * x_anchor
+    dy = (box_h - fit_h) * y_anchor
+
+    return (dx, dy, fit_w, fit_h)
+
+
 def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     """Convert SVG <image> to DrawingML picture element.
 
@@ -1172,11 +1483,31 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     # Resolve clip-path → DrawingML geometry
     clip_geom = _resolve_clip_geometry(elem, ctx, raw_x, raw_y, raw_w, raw_h)
 
+    # Resolve preserveAspectRatio="<align> slice" → DrawingML <a:srcRect>.
+    # This keeps the original image intact in the .pptx and lets users
+    # re-crop or reset the picture in PowerPoint, instead of permanently
+    # baking the crop into the embedded asset.
+    src_rect_xml = _resolve_image_src_rect(elem, img_data, w, h)
+
+    # Resolve preserveAspectRatio="<align> meet" by shrinking the picture
+    # frame to match the image's aspect ratio. Skipped when a real clip-path
+    # is in effect: clip geometry is computed against the original-box
+    # coordinate space and would no longer line up after a frame shift.
+    has_clip = bool(elem.get('clip-path')) and elem.get('clip-path') != 'none'
+    meet_fit = None if has_clip else _resolve_image_meet_fit(elem, img_data, w, h)
+
     shape_id = ctx.next_id()
-    off_x = px_to_emu(x)
-    off_y = px_to_emu(y)
-    ext_cx = px_to_emu(w)
-    ext_cy = px_to_emu(h)
+    if meet_fit is not None:
+        dx, dy, fit_w, fit_h = meet_fit
+        off_x = px_to_emu(x + dx)
+        off_y = px_to_emu(y + dy)
+        ext_cx = px_to_emu(fit_w)
+        ext_cy = px_to_emu(fit_h)
+    else:
+        off_x = px_to_emu(x)
+        off_y = px_to_emu(y)
+        ext_cx = px_to_emu(w)
+        ext_cy = px_to_emu(h)
 
     return ShapeResult(xml=f'''<p:pic>
 <p:nvPicPr>
@@ -1186,7 +1517,7 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 </p:nvPicPr>
 <p:blipFill>
 <a:blip r:embed="{r_id}"/>
-<a:stretch><a:fillRect/></a:stretch>
+{src_rect_xml}<a:stretch><a:fillRect/></a:stretch>
 </p:blipFill>
 <p:spPr>
 <a:xfrm{rot_attr}><a:off x="{off_x}" y="{off_y}"/>

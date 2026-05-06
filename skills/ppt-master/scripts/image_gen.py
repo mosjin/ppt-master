@@ -14,14 +14,18 @@ Backend selection (`IMAGE_BACKEND` in `.env` or the current process environment)
   IMAGE_BACKEND=qwen        -> Alibaba Qwen image backend
   IMAGE_BACKEND=zhipu       -> Zhipu GLM-Image backend
   IMAGE_BACKEND=volcengine  -> Volcengine Seedream backend
+  IMAGE_BACKEND=modelscope  -> ModelScope backend
   IMAGE_BACKEND=siliconflow -> SiliconFlow backend
   IMAGE_BACKEND=fal         -> fal.ai backend
   IMAGE_BACKEND=replicate   -> Replicate backend
   IMAGE_BACKEND=openrouter  -> OpenRouter backend
 
-Configuration source:
+Configuration source (process env wins, `.env` is the fallback layer):
   1. Current process environment variables
-  2. Project-root `.env` as a fallback layer
+  2. The first `.env` found among:
+     - Current working directory
+     - Repo root (when running from a clone)
+     - `~/.ppt-master/.env` (user-level config)
 
 Supported keys:
   IMAGE_BACKEND    (required) backend name
@@ -40,9 +44,10 @@ Usage:
 import os
 import sys
 import argparse
-from pathlib import Path
 
-ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+from config import load_prefixed_env_file, resolve_env_path
+
+ENV_PATH = resolve_env_path()
 IMAGE_ENV_PREFIXES = (
     "IMAGE_",
     "GEMINI_",
@@ -57,6 +62,7 @@ IMAGE_ENV_PREFIXES = (
     "BIGMODEL_",
     "VOLCENGINE_",
     "ARK_",
+    "MODELSCOPE_",
     "SILICONFLOW_",
     "FAL_",
     "REPLICATE_",
@@ -127,6 +133,14 @@ BACKEND_REGISTRY = {
         "key_hint": "VOLCENGINE_API_KEY / ARK_API_KEY",
         "aliases": ["ark", "doubao", "seedream"],
     },
+    "modelscope": {
+        "module": "backend_modelscope",
+        "tier": "experimental",
+        "label": "ModelScope",
+        "default_model": "Tongyi-MAI/Z-Image-Turbo",
+        "key_hint": "MODELSCOPE_API_KEY",
+        "aliases": ["modelscope", "model-scope"]
+    },
     "stability": {
         "module": "backend_stability",
         "tier": "extended",
@@ -186,64 +200,25 @@ TIER_ORDER = {"core": 0, "extended": 1, "experimental": 2}
 SUPPORTED_BACKENDS = tuple(sorted(BACKEND_REGISTRY))
 
 
-def _is_image_env_key(name: str) -> bool:
-    """Return whether an env var name belongs to image generation config."""
-    return name.startswith(IMAGE_ENV_PREFIXES)
-
-
-def _strip_env_quotes(value: str) -> str:
-    """Strip matching surrounding quotes from a `.env` value."""
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-        return value[1:-1]
-    return value
-
-
 def _load_image_env_file() -> None:
     """
-    Load image generation config from the project-root `.env` as a fallback layer.
+    Load image generation config from the resolved `.env` as a fallback layer.
 
     Existing process environment variables win over `.env`.
     """
-    if not ENV_PATH.exists():
-        return
-
-    with ENV_PATH.open("r", encoding="utf-8") as fh:
-        for lineno, raw_line in enumerate(fh, start=1):
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            if line.startswith("export "):
-                line = line[7:].lstrip()
-
-            if "=" not in line:
-                raise ValueError(
-                    f"Invalid line in {ENV_PATH}:{lineno}. Expected KEY=VALUE."
-                )
-
-            key, value = line.split("=", 1)
-            key = key.strip()
-            if not key:
-                raise ValueError(
-                    f"Invalid line in {ENV_PATH}:{lineno}. Missing variable name."
-                )
-
-            if not _is_image_env_key(key):
-                continue
-
-            if key in DEPRECATED_IMAGE_KEYS:
-                replacement = {
-                    "IMAGE_API_KEY": "GEMINI_API_KEY / OPENAI_API_KEY / QWEN_API_KEY / ZHIPU_API_KEY / ...",
-                    "IMAGE_MODEL": "GEMINI_MODEL / OPENAI_MODEL / QWEN_MODEL / ZHIPU_MODEL / ...",
-                    "IMAGE_BASE_URL": "GEMINI_BASE_URL / OPENAI_BASE_URL / QWEN_BASE_URL / ZHIPU_BASE_URL / ...",
-                }[key]
-                raise ValueError(
-                    f"Unsupported key in {ENV_PATH}:{lineno}: {key}\n"
-                    "Global image config keys have been removed.\n"
-                    f"Use IMAGE_BACKEND plus provider-specific keys instead, such as {replacement}."
-                )
-
-            os.environ.setdefault(key, _strip_env_quotes(value.strip()))
+    replacements = {
+        "IMAGE_API_KEY": "GEMINI_API_KEY / OPENAI_API_KEY / QWEN_API_KEY / ZHIPU_API_KEY / ...",
+        "IMAGE_MODEL": "GEMINI_MODEL / OPENAI_MODEL / QWEN_MODEL / ZHIPU_MODEL / ...",
+        "IMAGE_BASE_URL": "GEMINI_BASE_URL / OPENAI_BASE_URL / QWEN_BASE_URL / ZHIPU_BASE_URL / ...",
+    }
+    deprecated_messages = {
+        key: (
+            "Global image config keys have been removed.\n"
+            f"Use IMAGE_BACKEND plus provider-specific keys instead, such as {replacement}."
+        )
+        for key, replacement in replacements.items()
+    }
+    load_prefixed_env_file(IMAGE_ENV_PREFIXES, deprecated_keys=deprecated_messages)
 
 
 def _validate_runtime_config() -> None:
@@ -362,10 +337,6 @@ def main() -> None:
         help="The text prompt for image generation."
     )
     parser.add_argument(
-        "--negative_prompt", "-n", default=None,
-        help="Negative prompt to specify what to avoid."
-    )
-    parser.add_argument(
         "--aspect_ratio", default="1:1", choices=ALL_ASPECT_RATIOS,
         help=f"Aspect ratio. Default: 1:1."
     )
@@ -417,7 +388,6 @@ def main() -> None:
     try:
         backend.generate(
             prompt=args.prompt,
-            negative_prompt=args.negative_prompt,
             aspect_ratio=args.aspect_ratio,
             image_size=args.image_size,
             output_dir=args.output,

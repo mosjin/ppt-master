@@ -91,7 +91,7 @@ content:   1168 × 620 px
 | Body | Noto Sans SC | 500 | 20px |
 | 正文 small | Noto Sans SC | 500 | 17px |
 | 注释 Annotation | Noto Sans SC | 500 | 15px ← **最小内容字号** |
-| 代码 Code | Consolas, Courier New, monospace | 500 | 17px |
+| 代码 Code | Consolas, Courier New, monospace | 500 | 19px |
 | 帧号戳/眉线 | Consolas | 700 | 11–13px (UI chrome 专用) |
 
 ### 字体硬约束
@@ -165,13 +165,32 @@ content:   1168 × 620 px
 
 ### 3. 代码面板（IntelliJ Classic Light）
 
+**铁律（#119 fix）：每行代码用 1 个 `<text>` + N 个 `<tspan>`，禁止每 token 独立 `<text>`。**
+多 `<text>` 方案要求 AI 估算 x 坐标（Consolas 19px ≈ 11.4px/字符），累计误差导致关键字与变量名重叠。
+`<tspan>` 方案让渲染器自动算间距，零重叠。
+
 ```svg
-<rect x="100" y="265" width="1080" height="60" rx="6"
-      fill="#FFFFFF" stroke="#C94620" stroke-width="2"/>
-<text x="120" y="305" font-family="Consolas, monospace"
-      font-size="22" font-weight="700" fill="#1A1814">pre[0] = 0</text>
-<text x="380" y="305" font-family="Consolas, monospace"
-      font-size="18" font-weight="500" fill="#C94620">← 哨兵（重要！）</text>
+<!-- ✅ 正确：行号独立 <text>；代码行 = 单 <text> + 多 <tspan> -->
+<rect x="80" y="155" width="740" height="490" rx="8" fill="#FFFFFF" stroke="#C9BEA6" stroke-width="1.5"/>
+<text x="100" y="188" font-family="Consolas, monospace" font-size="13" font-weight="700" fill="#5A5147">solution.cpp</text>
+<line x1="100" y1="196" x2="800" y2="196" stroke="#C9BEA6" stroke-width="1"/>
+
+<text x="112" y="224" font-family="Consolas, monospace" font-size="13" font-weight="500" fill="#808080">01</text>
+<text x="150" y="224" font-family="Consolas, monospace" font-size="19" font-weight="500" fill="#808080" font-style="italic"><tspan>// 二分答案：check(W) 是否可行</tspan></text>
+
+<text x="112" y="250" font-family="Consolas, monospace" font-size="13" font-weight="500" fill="#808080">02</text>
+<text x="150" y="250" font-family="Consolas, monospace" font-size="19" font-weight="500" fill="#1A1814"><tspan fill="#000080" font-weight="700">int</tspan><tspan> lo = </tspan><tspan fill="#0000FF">1</tspan><tspan>, hi = n;</tspan></text>
+
+<text x="112" y="276" font-family="Consolas, monospace" font-size="13" font-weight="500" fill="#808080">03</text>
+<text x="150" y="276" font-family="Consolas, monospace" font-size="19" font-weight="500" fill="#1A1814"><tspan fill="#000080" font-weight="700">while</tspan><tspan> (lo &lt;= hi) {</tspan></text>
+
+<text x="112" y="302" font-family="Consolas, monospace" font-size="13" font-weight="500" fill="#808080">04</text>
+<text x="150" y="302" font-family="Consolas, monospace" font-size="19" font-weight="500" fill="#1A1814"><tspan>    </tspan><tspan fill="#000080" font-weight="700">int</tspan><tspan> mid = (lo + hi) / </tspan><tspan fill="#0000FF">2</tspan><tspan>;</tspan></text>
+
+<!-- ❌ 错误示范（禁止）：多 <text> 硬编码 x，会导致 token 重叠 -->
+<!-- <text x="150" y="302" ...>    </text>                    -->
+<!-- <text x="186" y="302" ...>int</text>   ← x 坐标估算误差  -->
+<!-- <text x="216" y="302" ...> mid = ...</text> ← 与上行重叠 -->
 ```
 
 ### 4. 口诀框（朱砂左边框 + 渐变背景）
@@ -232,6 +251,7 @@ content:   1168 × 620 px
 - ❌ 禁 HTML 命名实体 `&nbsp;` 等（用 Unicode 直接写）
 - ❌ 禁 XML 注释含 `--`（XML 1.0 §2.5 违规，svg_quality_checker 报 ERROR）
 - ❌ 禁混用图标库；所有可视化通过 SVG 直接绘制
+- ❌ 禁代码行内多 `<text>` token 拆分 — 每行代码用 1 `<text>` + N `<tspan>`（#119 fix，见 §VII.3）
 
 ---
 

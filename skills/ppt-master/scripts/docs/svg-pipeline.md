@@ -1,6 +1,8 @@
 # SVG Pipeline Tools
 
-These tools cover post-processing, SVG validation, speaker notes, and PPTX export.
+> Architecture rationale (why each artifact / step exists, deletion impact, two-consumer relationship between `svg_finalize/` and native pptx conversion): see [docs/technical-design.md "Post-Processing Pipeline"](../../../../docs/technical-design.md#post-processing-pipeline).
+
+These tools cover post-processing, SVG validation, speaker notes, recorded narration, and PPTX export.
 
 ## Recommended Pipeline
 
@@ -9,7 +11,7 @@ Run these steps in order:
 ```bash
 python3 scripts/total_md_split.py <project_path>
 python3 scripts/finalize_svg.py <project_path>
-python3 scripts/svg_to_pptx.py <project_path> -s final
+python3 scripts/svg_to_pptx.py <project_path>
 ```
 
 ## `finalize_svg.py`
@@ -29,12 +31,15 @@ It aggregates:
 Convert project SVGs into PPTX.
 
 ```bash
-python3 scripts/svg_to_pptx.py <project_path> -s final
-python3 scripts/svg_to_pptx.py <project_path> -s final --only native
-python3 scripts/svg_to_pptx.py <project_path> -s final --only legacy
-python3 scripts/svg_to_pptx.py <project_path> -s final --no-notes
+python3 scripts/svg_to_pptx.py <project_path>
+python3 scripts/svg_to_pptx.py <project_path> --only native
+python3 scripts/svg_to_pptx.py <project_path> --only legacy
+python3 scripts/svg_to_pptx.py <project_path> --no-notes
 python3 scripts/svg_to_pptx.py <project_path> -t none
-python3 scripts/svg_to_pptx.py <project_path> -s final --auto-advance 3
+python3 scripts/svg_to_pptx.py <project_path> --auto-advance 3
+python3 scripts/svg_to_pptx.py <project_path> --animation mixed --animation-duration 0.8
+python3 scripts/notes_to_audio.py <project_path> --voice zh-CN-XiaoxiaoNeural
+python3 scripts/svg_to_pptx.py <project_path> --recorded-narration audio
 ```
 
 Behavior:
@@ -45,6 +50,18 @@ Behavior:
 - Explicit `-o/--output` keeps the legacy side-by-side `_svg.pptx` next to the chosen path and skips `backup/`
 - Recommended source directory: `svg_final/`
 - Speaker notes are embedded automatically unless `--no-notes` is used
+- Recorded narration is opt-in:
+  - `notes_to_audio.py` uses `edge-tts` by default, or a configured cloud TTS provider (`elevenlabs`, `minimax`, `qwen`, `cosyvoice`), and generates one audio file per slide into `audio/`
+  - Narration text is read strictly from the matching `notes/*.md` file; the script only skips Markdown heading lines (`# ...`) and does not summarize, rewrite, or filter delivery notes
+  - `--recorded-narration audio` keeps speaker notes, embeds each matching audio file, and writes slide auto-advance timings from audio duration
+  - This is intended for PowerPoint's video export option "Use recorded timings and narrations"
+  - Voice choices can be listed with `python3 scripts/notes_to_audio.py --list-common-voices`, `python3 scripts/notes_to_audio.py --list-voices --locale zh-CN`, or provider-specific `--provider <name> --list-voices`
+- Page transitions are controlled by `-t/--transition`; per-element entrance animations are controlled by `-a/--animation`
+- Per-element animation applies to top-level SVG `<g id="...">` groups in z-order; aim for 3–8 content groups per slide. Page chrome (background / header / footer / decorations / watermark / page number, by id token) is skipped automatically
+- Start mode is set by `--animation-trigger`, mirroring PowerPoint's Start dropdown: `after-previous` (default, cascade with `--animation-stagger` spacing on slide entry), `on-click` (presenter-paced), `with-previous` (all together on slide entry)
+- Flat SVG roots without top-level groups fall back to at most 8 visible primitives; beyond that, animation is skipped on the slide
+- `mixed` is deterministic: the first animated group on each slide uses `fade`, then later groups cycle through a curated visible-effect pool across the whole deck; `random` samples from that same pool
+- `--animation-duration` controls per-element entrance length (default `0.4`); `--animation-stagger` adds gap between elements in `after-previous` mode (default `0.5`)
 
 Dependency:
 

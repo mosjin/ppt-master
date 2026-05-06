@@ -30,6 +30,12 @@ PPT Master works with any AI coding agent that can read files and run shell comm
 
 Yes. PPT Master includes a built-in image generation script that supports multiple providers (Gemini, OpenAI, FLUX, Qwen, Zhipu, etc.). During the Strategist phase, if you choose "AI generation" for the image approach, the pipeline will automatically generate images based on your content. You can also provide your own images — just place them in the project's `images/` folder.
 
+## Q: I don't have an image-generation API key — can I still get images?
+
+Yes — pick "Web-sourced" in the Strategist's Image Usage step. PPT Master ships a zero-config `image_search.py` that searches openly-licensed images across Openverse and Wikimedia Commons (no API key needed). Zero-config search is a fallback: it works immediately, but quality can be uneven because many results are ordinary user uploads.
+
+For better contemporary stock photography, set `PEXELS_API_KEY` and/or `PIXABAY_API_KEY` in `.env` (both are free). The search will include Pexels / Pixabay automatically, which usually improves people, workplace, lifestyle, product, and illustration images. You can mix paths in one deck (e.g. AI for hero illustrations, web for team photos). If a selected image requires attribution, Executor adds a small inline credit on the affected slide.
+
 ## Q: Can I edit the generated presentations?
 
 Yes. The main `.pptx` (native PowerPoint shapes — all text, graphics, and colors directly editable without any conversion) is saved to `exports/` with a timestamp. The SVG snapshot `_svg.pptx` plus a copy of `svg_output/` (the Executor's raw SVG source) are archived to `backup/<timestamp>/`, so you can revisit the visual reference or rebuild the pptx via `finalize_svg → svg_to_pptx` without re-running the LLM. `backup/<timestamp>/` directories can be deleted manually when no longer needed. Requires **Office 2016** or later.
@@ -56,42 +62,17 @@ If your workflow specifically requires Excel-driven data editing, manually creat
 
 ## Q: Can I change page transitions and element animations?
 
-Yes. The exported PPTX supports both **page transitions** and **per-element entrance animations**, controlled via `svg_to_pptx.py` CLI flags.
-
-**Page transitions** (on by default, 0.4s `fade`)
+Yes. Page transitions (`fade` 0.4s by default) and per-element entrance animations (`mixed` effect with `after-previous` cascade by default) are both controlled by `svg_to_pptx.py` flags — `-t/--transition` for page-level and `-a/--animation` for element-level. Common one-liners:
 
 ```bash
-# Pick a different effect: fade / push / wipe / split / strips / cover / random
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> -t push --transition-duration 0.6
-
-# Disable transitions
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> -t none
-
-# Auto-advance every 5 seconds
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --auto-advance 5
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project> -t push       # different transition
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project> -t none       # disable transitions
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project> -a none       # disable per-element animation
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation fade        # use a single effect instead of mixed
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation-trigger on-click   # presenter-paced reveals
 ```
 
-**Per-element animations** (off by default — existing users see no behavior change)
-
-Enter a slide → click once → semantic groups cascade in by z-order. To enable:
-
-```bash
-# Cascade every element with fade (recommended starting point)
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation fade
-
-# Auto-vary effects within a slide (title fades, content rotates fly/zoom/wipe...)
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation mixed
-
-# Slower pace: 0.5s per element, 0.2s gap between elements
-python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation fade \
-        --animation-duration 0.5 --animation-stagger 0.2
-```
-
-12 single effects: `appear / fade / fly / zoom / wipe / split / blinds / dissolve / peek / wheel / box / circle`, plus `mixed` and `random` auto-vary modes.
-
-**Anchor logic**: animations are anchored on top-level SVG `<g id="...">` groups (e.g. `<g id="cover-title">`, `<g id="card-1">`) — this is the cleanest cascade granularity. Slides whose root is flat `<rect>` / `<text>` / `<path>` (no top-level `<g>` wrappers) **fall back automatically**: if there are ≤20 top-level visible elements, each becomes one animation anchor; beyond 20 (typical of dense consulting pages / charts), animation is skipped on that slide — cascading dozens of atoms in series would just be noise. So Executors are recommended to wrap logical sections in `<g id>` regardless of animation, since it also improves PowerPoint's group-select / group-move ergonomics.
-
-**Note**: per-element animations only apply in native shapes mode (the default); `--only legacy` produces one image per slide and has no element anchors to animate.
+Full effect list, anchor logic (top-level `<g id="...">`), fallback behavior, and limitations: see [Animations & Transitions](../skills/ppt-master/references/animations.md).
 
 ## Q: Which AI model works best?
 
