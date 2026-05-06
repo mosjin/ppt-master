@@ -1,3 +1,5 @@
+**中文** | **[English](README.md)**
+
 # PPT Master — AI 生成原生可编辑 PPTX，支持任意文档输入
 
 [![Version](https://img.shields.io/badge/version-v2.6.0-blue.svg)](https://github.com/hugohe3/ppt-master/releases)
@@ -189,18 +191,37 @@ pip install -r requirements.txt
 
 日常更新（方式 A / B）：`python3 skills/ppt-master/scripts/update_repo.py`
 
-> **方式 C — Skill marketplace**：仓库已添加 `.claude-plugin/marketplace.json` 元数据，可通过 [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) 生态一行安装：
+> **方式 C — Skill marketplace**（Claude Code / 跨平台 CLI）：
 >
 > ```bash
+> # Claude Code 插件市场
+> claude plugin add github:mosjin/ppt-master
+>
 > # 跨 agent CLI（Claude Code、Cursor、Codex 等）
-> npx skills add hugohe3/ppt-master
+> npx skills add mosjin/ppt-master
 >
 > # 或在 Claude Code 内
-> /plugin marketplace add hugohe3/ppt-master
+> /plugin marketplace add mosjin/ppt-master
 > /plugin install ppt-master@ppt-master
 > ```
 >
-> 上述两种安装方式都只会拉取 skill 文件本身（不含完整仓库），后处理脚本仍需在安装目录跑 `pip install -r requirements.txt`。
+> 上述安装方式只拉取 skill 文件本身（不含完整仓库），后处理脚本仍需在安装目录跑 `pip install -r requirements.txt`。
+
+> **方式 D — Gemini CLI**（需先安装 [Gemini CLI](https://github.com/google-gemini/gemini-cli)）：
+>
+> ```bash
+> # 推荐：HTTPS（无需配置 GitHub SSH key，已实测通过）
+> gemini skills install https://github.com/mosjin/ppt-master.git --consent --scope user
+>
+> # 备选：SSH（需要 GitHub SSH key 已配置）
+> # gemini skills install git@github.com:mosjin/ppt-master.git --consent --scope user
+> ```
+>
+> 安装后在 skill 目录下安装依赖：
+>
+> ```bash
+> pip install -r "$(gemini skills path mosjin/ppt-master)/requirements.txt"
+> ```
 
 ### 4. 开始创作
 

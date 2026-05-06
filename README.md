@@ -1,3 +1,5 @@
+**[中文版](README_CN.md)** | **English**
+
 # PPT Master — AI generates natively editable PPTX from any document
 
 [![Version](https://img.shields.io/badge/version-v2.6.0-blue.svg)](https://github.com/hugohe3/ppt-master/releases)
@@ -204,7 +206,11 @@ To update later (Option A / B): `python3 skills/ppt-master/scripts/update_repo.p
 > **Option D — Gemini CLI** (requires [Gemini CLI](https://github.com/google-gemini/gemini-cli)):
 >
 > ```bash
-> gemini skills install git@github.com:mosjin/ppt-master.git --consent --scope user
+> # Recommended: HTTPS (no SSH key required — verified working)
+> gemini skills install https://github.com/mosjin/ppt-master.git --consent --scope user
+>
+> # Alternative: SSH (requires GitHub SSH key configured)
+> # gemini skills install git@github.com:mosjin/ppt-master.git --consent --scope user
 > ```
 >
 > Then install dependencies from the installed skill directory:

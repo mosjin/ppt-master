@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED for Gemini CLI installation — do NOT edit directly.
+     Edit skills/ppt-master/SKILL.md and run: python scripts/sync_skill_root.py --apply
+     Path adaptation: ${SKILL_DIR}/ → ${SKILL_DIR}/skills/ppt-master/ -->
 ---
 name: ppt-master
 description: >
@@ -44,30 +47,30 @@ description: >
 
 | Script | Purpose |
 |--------|---------|
-| `${SKILL_DIR}/scripts/source_to_md/pdf_to_md.py` | PDF to Markdown |
-| `${SKILL_DIR}/scripts/source_to_md/doc_to_md.py` | Documents to Markdown — native Python for DOCX/HTML/EPUB/IPYNB, pandoc fallback for legacy formats (.doc/.odt/.rtf/.tex/.rst/.org/.typ) |
-| `${SKILL_DIR}/scripts/source_to_md/excel_to_md.py` | Excel workbooks to Markdown — supports .xlsx/.xlsm; legacy .xls should be resaved as .xlsx |
-| `${SKILL_DIR}/scripts/source_to_md/ppt_to_md.py` | PowerPoint to Markdown |
-| `${SKILL_DIR}/scripts/source_to_md/web_to_md.py` | Web page to Markdown |
-| `${SKILL_DIR}/scripts/source_to_md/web_to_md.cjs` | Node.js fallback for WeChat / TLS-blocked sites (use only if `curl_cffi` is unavailable; `web_to_md.py` now handles WeChat when `curl_cffi` is installed) |
-| `${SKILL_DIR}/scripts/project_manager.py` | Project init / validate / manage |
-| `${SKILL_DIR}/scripts/analyze_images.py` | Image analysis |
-| `${SKILL_DIR}/scripts/image_gen.py` | AI image generation (multi-provider) |
-| `${SKILL_DIR}/scripts/svg_quality_checker.py` | SVG quality check |
-| `${SKILL_DIR}/scripts/total_md_split.py` | Speaker notes splitting |
-| `${SKILL_DIR}/scripts/finalize_svg.py` | SVG post-processing (unified entry) |
-| `${SKILL_DIR}/scripts/svg_to_pptx.py` | Export to PPTX |
-| `${SKILL_DIR}/scripts/update_spec.py` | Propagate a `spec_lock.md` color / font_family change across all generated SVGs |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/pdf_to_md.py` | PDF to Markdown |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/doc_to_md.py` | Documents to Markdown — native Python for DOCX/HTML/EPUB/IPYNB, pandoc fallback for legacy formats (.doc/.odt/.rtf/.tex/.rst/.org/.typ) |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/excel_to_md.py` | Excel workbooks to Markdown — supports .xlsx/.xlsm; legacy .xls should be resaved as .xlsx |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/ppt_to_md.py` | PowerPoint to Markdown |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/web_to_md.py` | Web page to Markdown |
+| `${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/web_to_md.cjs` | Node.js fallback for WeChat / TLS-blocked sites (use only if `curl_cffi` is unavailable; `web_to_md.py` now handles WeChat when `curl_cffi` is installed) |
+| `${SKILL_DIR}/skills/ppt-master/scripts/project_manager.py` | Project init / validate / manage |
+| `${SKILL_DIR}/skills/ppt-master/scripts/analyze_images.py` | Image analysis |
+| `${SKILL_DIR}/skills/ppt-master/scripts/image_gen.py` | AI image generation (multi-provider) |
+| `${SKILL_DIR}/skills/ppt-master/scripts/svg_quality_checker.py` | SVG quality check |
+| `${SKILL_DIR}/skills/ppt-master/scripts/total_md_split.py` | Speaker notes splitting |
+| `${SKILL_DIR}/skills/ppt-master/scripts/finalize_svg.py` | SVG post-processing (unified entry) |
+| `${SKILL_DIR}/skills/ppt-master/scripts/svg_to_pptx.py` | Export to PPTX |
+| `${SKILL_DIR}/skills/ppt-master/scripts/update_spec.py` | Propagate a `spec_lock.md` color / font_family change across all generated SVGs |
 
-For complete tool documentation, see `${SKILL_DIR}/scripts/README.md`.
+For complete tool documentation, see `${SKILL_DIR}/skills/ppt-master/scripts/README.md`.
 
 ## Template Index
 
 | Index | Path | Purpose |
 |-------|------|---------|
-| Layout templates | `${SKILL_DIR}/templates/layouts/layouts_index.json` | Query available page layout templates |
-| Visualization templates | `${SKILL_DIR}/templates/charts/charts_index.json` | Query available visualization SVG templates (charts, infographics, diagrams, frameworks) |
-| Icon library | `${SKILL_DIR}/templates/icons/` | See `${SKILL_DIR}/templates/icons/README.md`; search icons on demand with `ls templates/icons/<library>/ \| grep <keyword>` |
+| Layout templates | `${SKILL_DIR}/skills/ppt-master/templates/layouts/layouts_index.json` | Query available page layout templates |
+| Visualization templates | `${SKILL_DIR}/skills/ppt-master/templates/charts/charts_index.json` | Query available visualization SVG templates (charts, infographics, diagrams, frameworks) |
+| Icon library | `${SKILL_DIR}/skills/ppt-master/templates/icons/` | See `${SKILL_DIR}/skills/ppt-master/templates/icons/README.md`; search icons on demand with `ls templates/icons/<library>/ \| grep <keyword>` |
 
 ## Standalone Workflows
 
@@ -89,14 +92,14 @@ When the user provides non-Markdown content, convert immediately:
 
 | User Provides | Command |
 |---------------|---------|
-| PDF file | `python3 ${SKILL_DIR}/scripts/source_to_md/pdf_to_md.py <file>` |
-| DOCX / Word / Office document | `python3 ${SKILL_DIR}/scripts/source_to_md/doc_to_md.py <file>` |
-| XLSX / XLSM / Excel workbook | `python3 ${SKILL_DIR}/scripts/source_to_md/excel_to_md.py <file>` |
+| PDF file | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/pdf_to_md.py <file>` |
+| DOCX / Word / Office document | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/doc_to_md.py <file>` |
+| XLSX / XLSM / Excel workbook | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/excel_to_md.py <file>` |
 | CSV / TSV | Read directly as plain-text table source |
-| PPTX / PowerPoint deck | `python3 ${SKILL_DIR}/scripts/source_to_md/ppt_to_md.py <file>` |
-| EPUB / HTML / LaTeX / RST / other | `python3 ${SKILL_DIR}/scripts/source_to_md/doc_to_md.py <file>` |
-| Web link | `python3 ${SKILL_DIR}/scripts/source_to_md/web_to_md.py <URL>` |
-| WeChat / high-security site | `python3 ${SKILL_DIR}/scripts/source_to_md/web_to_md.py <URL>` (requires `curl_cffi`; falls back to `node web_to_md.cjs <URL>` only if that package is unavailable) |
+| PPTX / PowerPoint deck | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/ppt_to_md.py <file>` |
+| EPUB / HTML / LaTeX / RST / other | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/doc_to_md.py <file>` |
+| Web link | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/web_to_md.py <URL>` |
+| WeChat / high-security site | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/source_to_md/web_to_md.py <URL>` (requires `curl_cffi`; falls back to `node web_to_md.cjs <URL>` only if that package is unavailable) |
 | Markdown | Read directly |
 
 **✅ Checkpoint — Confirm source content is ready, proceed to Step 2.**
@@ -108,7 +111,7 @@ When the user provides non-Markdown content, convert immediately:
 🚧 **GATE**: Step 1 complete; source content is ready (Markdown file, user-provided text, or requirements described in conversation are all valid).
 
 ```bash
-python3 ${SKILL_DIR}/scripts/project_manager.py init <project_name> --format <format>
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/project_manager.py init <project_name> --format <format>
 ```
 
 Format options: `ppt169` (default), `ppt43`, `xhs`, `story`, etc. For the full format list, see `references/canvas-formats.md`.
@@ -117,7 +120,7 @@ Import source content (choose based on the situation):
 
 | Situation | Action |
 |-----------|--------|
-| Has source files (PDF/MD/etc.) | `python3 ${SKILL_DIR}/scripts/project_manager.py import-sources <project_path> <source_files...> --move` |
+| Has source files (PDF/MD/etc.) | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/project_manager.py import-sources <project_path> <source_files...> --move` |
 | User provided text directly in conversation | No import needed — content is already in conversation context; subsequent steps can reference it directly |
 
 > ⚠️ **MUST use `--move`** (not copy): all source files — Step 1's generated Markdown, original PDFs / MDs / images — go into `sources/` via `import-sources --move`. After execution they no longer exist at the original location. Intermediate artifacts (e.g., `_files/`) are handled automatically.
@@ -138,13 +141,13 @@ Import source content (choose based on the situation):
 2. Names a style / brand reference that maps to a template (e.g., "McKinsey 那种" / "Google style" / "学术答辩样式")
 3. Asks what templates exist (e.g., "有哪些模板可以用")
 
-When triggered: read `${SKILL_DIR}/templates/layouts/layouts_index.json`, resolve the match (or list options for trigger 3), and copy:
+When triggered: read `${SKILL_DIR}/skills/ppt-master/templates/layouts/layouts_index.json`, resolve the match (or list options for trigger 3), and copy:
 
 ```bash
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.svg <project_path>/templates/
-cp ${SKILL_DIR}/templates/layouts/<template_name>/design_spec.md <project_path>/templates/
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.png <project_path>/images/ 2>/dev/null || true
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.jpg <project_path>/images/ 2>/dev/null || true
+cp ${SKILL_DIR}/skills/ppt-master/templates/layouts/<template_name>/*.svg <project_path>/templates/
+cp ${SKILL_DIR}/skills/ppt-master/templates/layouts/<template_name>/design_spec.md <project_path>/templates/
+cp ${SKILL_DIR}/skills/ppt-master/templates/layouts/<template_name>/*.png <project_path>/images/ 2>/dev/null || true
+cp ${SKILL_DIR}/skills/ppt-master/templates/layouts/<template_name>/*.jpg <project_path>/images/ 2>/dev/null || true
 ```
 
 **Soft hint (non-blocking).** When content is an obvious strong match for an existing template (e.g., academic defense, government report, McKinsey-style deck) AND no template trigger fired, emit a single-sentence notice and continue without waiting:
@@ -216,7 +219,7 @@ Read references/strategist.md
 
 If the user provided images, run analysis **before outputting the design spec**:
 ```bash
-python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/analyze_images.py <project_path>/images
 ```
 
 > ⚠️ **Image handling**: NEVER directly read / open / view image files (`.jpg`, `.png`, etc.). All image info comes from `analyze_images.py` output or the Design Spec's Image Resource List.
@@ -252,8 +255,8 @@ Then **lazy-load the path-specific reference** for each row that actually needs 
 
 | Acquire Via | Load reference (only if any such row exists) | Run |
 |---|---|---|
-| `ai` | `references/image-generator.md` | `python3 ${SKILL_DIR}/scripts/image_gen.py ...` |
-| `web` | `references/image-searcher.md` | `python3 ${SKILL_DIR}/scripts/image_search.py ...` |
+| `ai` | `references/image-generator.md` | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/image_gen.py ...` |
+| `web` | `references/image-searcher.md` | `python3 ${SKILL_DIR}/skills/ppt-master/scripts/image_search.py ...` |
 | `user` / `placeholder` | (skip) | (skip) |
 
 A deck with only `ai` rows never loads `image-searcher.md`; a deck with only `web` rows never loads `image-generator.md`. A mixed deck loads both, processes each row through its own path, and writes both `image_prompts.md` and `image_sources.json`.
@@ -302,7 +305,7 @@ Read references/executor-consultant-top.md # Top consulting style (MBB level)
 
 **Quality Check Gate (Mandatory)** — after all SVGs, BEFORE speaker notes:
 ```bash
-python3 ${SKILL_DIR}/scripts/svg_quality_checker.py <project_path>
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/svg_quality_checker.py <project_path>
 ```
 - Any `error` (banned SVG features, viewBox mismatch, spec_lock drift, etc.) MUST be fixed before proceeding — return to Visual Construction, regenerate that page, re-run check.
 - `warning` entries (low-res image, non-PPT-safe font tail, etc.): fix when straightforward, otherwise acknowledge and release.
@@ -337,17 +340,17 @@ Canonical three-command pipeline (mirrors `references/shared-standards.md` §5):
 
 **Step 7.1** — Split speaker notes:
 ```bash
-python3 ${SKILL_DIR}/scripts/total_md_split.py <project_path>
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/total_md_split.py <project_path>
 ```
 
 **Step 7.2** — SVG post-processing (icon embedding / image crop & embed / text flattening / rounded rect to path):
 ```bash
-python3 ${SKILL_DIR}/scripts/finalize_svg.py <project_path>
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/finalize_svg.py <project_path>
 ```
 
 **Step 7.3** — Export PPTX (embeds speaker notes by default):
 ```bash
-python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
+python3 ${SKILL_DIR}/skills/ppt-master/scripts/svg_to_pptx.py <project_path>
 # Output:
 #   exports/<project_name>_<timestamp>.pptx           ← main native pptx (reads svg_output/, high fidelity)
 #   backup/<timestamp>/<project_name>_svg.pptx        ← SVG preview pptx (reads svg_final/)
