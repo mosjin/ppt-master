@@ -168,12 +168,12 @@ PPT Master runs in **any tool with agent capability** — read/write files, exec
 
 ### 3. Set Up
 
-**Option A — Download ZIP** (no Git required): click **Code → Download ZIP** on the [GitHub page](https://github.com/hugohe3/ppt-master), then unzip.
+**Option A — Download ZIP** (no Git required): click **Code → Download ZIP** on the [GitHub page](https://github.com/mosjin/ppt-master), then unzip.
 
 **Option B — Git clone** (requires [Git](https://git-scm.com/downloads) installed):
 
 ```bash
-git clone https://github.com/hugohe3/ppt-master.git
+git clone https://github.com/mosjin/ppt-master.git
 cd ppt-master
 ```
 
@@ -185,18 +185,33 @@ pip install -r requirements.txt
 
 To update later (Option A / B): `python3 skills/ppt-master/scripts/update_repo.py`
 
-> **Option C — Skill marketplace**: the repo ships `.claude-plugin/marketplace.json`, so it can be installed through the [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) ecosystem:
+> **Option C — Skill marketplace** (Claude Code / cross-agent CLI):
 >
 > ```bash
+> # Claude Code plugin marketplace
+> claude plugin add github:mosjin/ppt-master
+>
 > # Cross-agent CLI (Claude Code, Cursor, Codex, etc.)
-> npx skills add hugohe3/ppt-master
+> npx skills add mosjin/ppt-master
 >
 > # Or inside Claude Code
-> /plugin marketplace add hugohe3/ppt-master
+> /plugin marketplace add mosjin/ppt-master
 > /plugin install ppt-master@ppt-master
 > ```
 >
 > Both install paths above only fetch the skill files (not the full repo); you still need to `pip install -r requirements.txt` from the installed location for the post-processing scripts to run.
+
+> **Option D — Gemini CLI** (requires [Gemini CLI](https://github.com/google-gemini/gemini-cli)):
+>
+> ```bash
+> gemini skills install git@github.com:mosjin/ppt-master.git --consent --scope user
+> ```
+>
+> Then install dependencies from the installed skill directory:
+>
+> ```bash
+> pip install -r "$(gemini skills path mosjin/ppt-master)/requirements.txt"
+> ```
 
 ### 4. Create
 
