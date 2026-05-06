@@ -75,6 +75,7 @@ For complete tool documentation, see `${SKILL_DIR}/scripts/README.md`.
 |----------|------|---------|
 | `create-template` | `workflows/create-template.md` | Standalone template creation workflow |
 | `verify-charts` | `workflows/verify-charts.md` | Chart coordinate calibration — run after SVG generation if the deck contains data charts |
+| `visual-edit` | `workflows/visual-edit.md` | Browser-based visual editor for fine-grained edits — run only when the user explicitly requests it after export |
 
 ---
 
@@ -235,30 +236,43 @@ python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images
 
 ---
 
-### Step 5: Image_Generator Phase (Conditional)
+### Step 5: Image Acquisition Phase (Conditional)
 
 🚧 **GATE**: Step 4 complete; Design Specification & Content Outline generated and user confirmed.
 
-> **Trigger**: Image approach includes "AI generation". Otherwise skip to Step 6.
+> **Trigger**: At least one row in the resource list has `Acquire Via: ai` and/or `Acquire Via: web`. If every row is `user` or `placeholder`, skip to Step 6.
 
-Read `references/image-generator.md`
+**Always load the common framework**:
 
-1. Extract all images with status `Pending` from the design spec
-2. Generate prompt document → `<project_path>/images/image_prompts.md`
-3. Generate images (CLI tool recommended):
-   ```bash
-   python3 ${SKILL_DIR}/scripts/image_gen.py "prompt" --aspect_ratio 16:9 --image_size 1K -o <project_path>/images
-   ```
-
-**✅ Checkpoint — Confirm image generation attempted for every row, proceed to Step 6**:
-```markdown
-## ✅ Image_Generator Phase Complete
-- [x] Prompt document created
-- [x] Each image: status is either `Generated` (file present in images/) or `Needs-Manual` (reported to user with filename + reason)
-- [x] No row remains `Pending`
+```
+Read references/image-base.md
 ```
 
-> On generation failure, do NOT halt — follow the Failure Handling rule in `references/image-generator.md` §4.3: retry once, then mark the row `Needs-Manual`, report to user, and continue to Step 6.
+Then **lazy-load the path-specific reference** for each row that actually needs it:
+
+| Acquire Via | Load reference (only if any such row exists) | Run |
+|---|---|---|
+| `ai` | `references/image-generator.md` | `python3 ${SKILL_DIR}/scripts/image_gen.py ...` |
+| `web` | `references/image-searcher.md` | `python3 ${SKILL_DIR}/scripts/image_search.py ...` |
+| `user` / `placeholder` | (skip) | (skip) |
+
+A deck with only `ai` rows never loads `image-searcher.md`; a deck with only `web` rows never loads `image-generator.md`. A mixed deck loads both, processes each row through its own path, and writes both `image_prompts.md` and `image_sources.json`.
+
+Workflow:
+
+1. Extract all rows with `Status: Pending` and `Acquire Via ∈ {ai, web}` from the design spec
+2. Generate prompts (ai rows) and/or run search (web rows) per [image-base.md](references/image-base.md) §2 dispatch table
+3. Verify every row reaches a terminal status: `Generated` (ai success), `Sourced` (web success), or `Needs-Manual`
+
+**✅ Checkpoint — Confirm acquisition attempted for every row, proceed to Step 6**:
+```markdown
+## ✅ Image Acquisition Phase Complete
+- [x] image_prompts.md created (when any ai rows processed)
+- [x] image_sources.json created (when any web rows processed)
+- [x] Each row: status is `Generated` / `Sourced` / `Needs-Manual` (no `Pending` remaining)
+```
+
+> On acquisition failure, do NOT halt — follow the Failure Handling rule in [image-base.md](references/image-base.md) §5: retry once, then mark the row `Needs-Manual`, report to user, and continue to Step 6.
 
 ---
 
@@ -312,6 +326,10 @@ python3 ${SKILL_DIR}/scripts/svg_quality_checker.py <project_path>
 
 🚧 **GATE**: Step 6 complete; all SVGs generated to `svg_output/`; speaker notes `notes/total.md` generated.
 
+🚧 **Image readiness GATE** (when Step 5 left ai rows in `Needs-Manual`): every expected file must exist at `project/images/<filename>` before running 7.1.
+
+> If files are missing: PAUSE, list the missing filenames, point the user to `images/image_prompts.md` (each `### Image N:` block is paste-ready for ChatGPT / Gemini / Midjourney) and the required placement `project/images/<filename>`. Resume Step 7.1 only after all expected files are in place. `finalize_svg.py` and `svg_to_pptx.py` do not detect missing files at this layer — proceeding with gaps produces a deck with broken image references.
+
 > ⚠️ Run the three sub-steps **one at a time** — each must complete successfully before the next.
 > ❌ **NEVER** combine them into a single code block or shell invocation.
 
@@ -329,16 +347,40 @@ python3 ${SKILL_DIR}/scripts/finalize_svg.py <project_path>
 
 **Step 7.3** — Export PPTX (embeds speaker notes by default):
 ```bash
-python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path> -s final
+python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 # Output:
-#   exports/<project_name>_<timestamp>.pptx           ← main native pptx
-#   backup/<timestamp>/<project_name>_svg.pptx        ← SVG snapshot
+#   exports/<project_name>_<timestamp>.pptx           ← main native pptx (reads svg_output/, high fidelity)
+#   backup/<timestamp>/<project_name>_svg.pptx        ← SVG preview pptx (reads svg_final/)
 #   backup/<timestamp>/svg_output/                    ← Executor SVG source backup
 ```
 
+> The two products now read from different sources by design: native pptx
+> consumes `svg_output/` so the converter can preserve high-fidelity primitives
+> (icon `<use>` placeholders, image `preserveAspectRatio` → `srcRect`, rounded
+> rect `rx/ry` → `prstGeom roundRect`). The legacy/preview pptx still consumes
+> `svg_final/` because PowerPoint's internal SVG parser cannot handle those
+> primitives. Pass `-s output` or `-s final` to force a single source on both
+> products if you need the older single-source behaviour.
+
+**Optional animation flags** (the defaults already enable rich entrance animations — adjust only when the user asks for something different):
+- `-t <effect>` — page transition. Default `fade`. Options: `fade` / `push` / `wipe` / `split` / `strips` / `cover` / `random` / `none`.
+- `-a <effect>` — per-element entrance animation. Default `mixed` (auto-vary across the deck). Pass `none` to disable, or pick a specific effect like `fade`. Requires top-level `<g id="...">` groups (already required by Executor).
+- `--animation-trigger {on-click,with-previous,after-previous}` — Start mode (matches PowerPoint's animation-pane Start dropdown). Default `after-previous` (click-free cascade; pace via `--animation-stagger`). Use `on-click` for presenter-paced reveals, or `with-previous` for all-at-once.
+- `--auto-advance <seconds>` — kiosk-style auto-play.
+
+**Optional recorded narration** (only when the user asks for narrated/video export):
+
+Run the standalone [`generate-audio`](workflows/generate-audio.md) workflow. The AI picks a narration backend (`edge` by default, or a configured cloud provider such as ElevenLabs / MiniMax / Qwen / CosyVoice for high-quality or cloned voices), asks the user once (backend + voice + rate/settings + embed-or-not, all with recommended values), then executes `notes_to_audio.py` and (if chosen) re-exports the PPTX with `--recorded-narration audio`.
+
+Do NOT call `notes_to_audio.py` directly without going through the workflow — `--voice` / `--voice-id` is required and the workflow produces the locale/provider-aware recommendation that makes the choice meaningful.
+
+Full effect list, anchor logic, and limits: [`references/animations.md`](references/animations.md).
+
 > ❌ **NEVER** substitute `cp` for `finalize_svg.py` — finalize performs multiple critical processing steps
-> ❌ **NEVER** export from `svg_output/` — MUST use `-s final` (exports from `svg_final/`)
-> ❌ **NEVER** add extra flags like `--only`
+> ❌ **NEVER** force `-s output` for the legacy/preview pptx (PowerPoint's internal SVG parser drops icons and rounded corners). The default auto-split already gives native the high-fidelity source it needs without touching legacy.
+> ❌ **NEVER** use `--only` (it suppresses one of the two output files)
+
+> Post-export iteration: whenever the user asks to change anything on a generated slide ("改一下", "调字号", "那里看着不对", "把图片换大点"), the [`visual-edit`](workflows/visual-edit.md) workflow is available — surface it as an option. If the user describes the change with enough specificity to apply directly ("第 3 页副标题字号改 32"), edit the SVG directly instead; if they're vaguely pointing at "somewhere" on the deck, run the workflow.
 
 ---
 

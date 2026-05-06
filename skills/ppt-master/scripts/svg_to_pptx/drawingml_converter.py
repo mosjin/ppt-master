@@ -21,6 +21,34 @@ from .drawingml_elements import (
 
 
 # ---------------------------------------------------------------------------
+# Animation anchor selection
+# ---------------------------------------------------------------------------
+
+# Tokens that mark a top-level <g id="..."> as page chrome rather than animated
+# content. When any token (after splitting id on '-' and '_') matches, the group
+# is excluded from the per-element entrance animation cascade so background,
+# header/footer, decorations etc. appear together with the slide instead of
+# requiring presenter clicks.
+_CHROME_ID_TOKENS = frozenset({
+    'background', 'bg',
+    'decoration', 'decorations', 'decor',
+    'header', 'footer',
+    'chrome', 'watermark',
+    'pagenumber', 'pagenum',
+})
+
+
+def _is_chrome_id(elem_id: str | None) -> bool:
+    if not elem_id:
+        return False
+    lower = elem_id.lower()
+    if lower.replace('-', '').replace('_', '') in _CHROME_ID_TOKENS:
+        return True
+    tokens = re.split(r'[-_]', lower)
+    return any(t in _CHROME_ID_TOKENS for t in tokens if t)
+
+
+# ---------------------------------------------------------------------------
 # Transform & layout helpers
 # ---------------------------------------------------------------------------
 
@@ -85,11 +113,17 @@ def convert_g(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     if not child_results:
         return None
 
-    # Single child: flatten
-    if len(child_results) == 1:
+    elem_id = elem.get('id')
+    should_animate_group = ctx.depth == 0 and elem_id and not _is_chrome_id(elem_id)
+
+    # Single-child non-semantic groups are flattened to reduce nesting. Top-level
+    # semantic groups are preserved so animations target the group, not its
+    # individual child shapes.
+    if len(child_results) == 1 and not should_animate_group:
         return child_results[0]
 
-    # Multiple children: wrap in <p:grpSp>
+    # Multiple children, or a top-level semantic one-child group: wrap in
+    # <p:grpSp> so PowerPoint can animate the group as one unit.
     min_x = min_y = float('inf')
     max_x = max_y = float('-inf')
 
@@ -118,8 +152,7 @@ def convert_g(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     # multi-child wrapper qualifies — flattened single-child groups have no
     # <p:grpSp> to anchor a timing target on, and nested groups are
     # ignored to keep the animation budget at ~per-section granularity.
-    elem_id = elem.get('id')
-    if ctx.depth == 0 and elem_id:
+    if should_animate_group:
         ctx.anim_targets.append((group_id, elem_id))
 
     group_effect = ''
@@ -232,6 +265,28 @@ def convert_svg_to_slide_shapes(
     tree = ET.parse(str(svg_path))
     root = tree.getroot()
 
+    # Expand <use data-icon="..."/> placeholders in-memory so this dispatcher
+    # can consume svg_output/ directly. Standard renderers and this converter
+    # both ignore data-icon, so without expansion icons would silently drop.
+    # The on-disk finalize_svg pipeline does the same expansion for svg_final/;
+    # running this here makes the two pipelines behaviourally aligned.
+    icons_dir = Path(__file__).resolve().parent.parent.parent / 'templates' / 'icons'
+    if icons_dir.exists():
+        from .use_expander import expand_use_data_icons
+        expanded = expand_use_data_icons(root, icons_dir)
+        if verbose and expanded:
+            print(f'  Expanded {expanded} <use data-icon="..."/> placeholder(s)')
+
+    # Flatten positional <tspan> (those with x/y/non-zero dy) into independent
+    # <text> elements. DrawingML runs cannot reposition mid-paragraph, so a
+    # dy-stacked block of tspans would otherwise collapse onto one baseline,
+    # and an x-anchored tspan would render in the wrong column. finalize_svg
+    # does the same flattening on disk; doing it here keeps native pptx output
+    # correct when reading raw svg_output/.
+    from .tspan_flattener import flatten_positional_tspans
+    if flatten_positional_tspans(tree) and verbose:
+        print('  Flattened positional <tspan> into independent <text>')
+
     defs = collect_defs(root)
     ctx = ConvertContext(defs=defs, slide_num=slide_num, svg_dir=Path(svg_path).parent)
 
@@ -260,10 +315,10 @@ def convert_svg_to_slide_shapes(
     # Animation target fallback. Semantic <g id="..."> groups are the
     # preferred anchors (set inside convert_g). When the SVG has none
     # at the root we fall back to top-level primitives, but only when
-    # the count is reasonable — dense pages (consulting decks, charts,
-    # diagrams) routinely have 70–150 atoms at the root and animating
-    # each one is unusable, so we silently skip animation past the cap.
-    _ANIM_FALLBACK_CAP = 20
+    # the count is reasonable. Presenter-click animation should reveal
+    # semantic blocks, not atomized drawing primitives, so fallback is
+    # intentionally capped at a low count.
+    _ANIM_FALLBACK_CAP = 8
     if not ctx.anim_targets and 0 < len(fallback_targets) <= _ANIM_FALLBACK_CAP:
         ctx.anim_targets = fallback_targets
 
