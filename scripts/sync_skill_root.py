@@ -34,10 +34,13 @@ def main():
     root_text = ROOT_SKILL.read_text(encoding="utf-8") if ROOT_SKILL.exists() else None
 
     if root_text is None:
-        print(f"⚠️  Root SKILL.md does not exist yet")
-        if args.apply or not args.reverse:
+        print("⚠️  Root SKILL.md does not exist yet")
+        if args.apply:
             ROOT_SKILL.write_text(canonical_text, encoding="utf-8")
             print(f"✅ Created {ROOT_SKILL} from canonical")
+        else:
+            print("   Run with --apply to create it")
+            sys.exit(1)
         return
 
     if canonical_text == root_text:
