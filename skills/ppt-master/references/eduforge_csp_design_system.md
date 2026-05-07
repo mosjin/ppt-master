@@ -63,11 +63,11 @@ content:   1168 × 620 px
 | **plum 绛紫** | `#6F3258` | D帧推导 · Proof 数学证明框 · **幕S act 色** |
 | **moss 苔绿** | `#667A2E` | 答案 W* · 正确结论 · **幕Σ act 色** |
 | **sky 黛蓝** | `#3C6589` | T帧下游预告 · 知识树 · 关联链 · **幕L act 色** |
-| code-bg | `#FFFFFF` | 代码块背景 |
-| code-keyword | `#000080` | 代码关键字（navy bold）|
-| code-comment | `#808080` | 代码注释（gray italic）|
-| code-number | `#0000FF` | 代码数字（blue）|
-| code-string | `#008000` | 代码字符串（green）|
+| code-bg | `#EDF2ED` | 代码面板底色（极浅绿，GitHub Light）|
+| code-keyword | `#005CC5` | 代码关键字（蓝）|
+| code-comment | `#6A737D` | 代码注释（蓝灰）|
+| code-literal | `#E36209` | 代码字面量/数值（橙）|
+| code-error | `#D73A49` | 代码错误/删除（红）|
 
 ## IV. 五幕色映射
 
