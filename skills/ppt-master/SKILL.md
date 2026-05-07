@@ -300,13 +300,23 @@ Read references/executor-consultant-top.md # Top consulting style (MBB level)
 
 **Visual Construction Phase**: generate SVG pages sequentially, one at a time, in one continuous pass → `<project_path>/svg_output/`
 
-**Quality Check Gate (Mandatory)** — after all SVGs, BEFORE speaker notes:
+**Quality Check Gate (Mandatory — self-correcting loop)** — after all SVGs, BEFORE speaker notes:
 ```bash
 python3 ${SKILL_DIR}/scripts/svg_quality_checker.py <project_path>
 ```
-- Any `error` (banned SVG features, viewBox mismatch, spec_lock drift, etc.) MUST be fixed before proceeding — return to Visual Construction, regenerate that page, re-run check.
+
+**Retry loop (max 3 attempts)**:
+
+| Attempt | Action |
+|---------|--------|
+| **1** | Run checker. `0 errors` → proceed to Logic Construction Phase |
+| **2** | For each failing file: re-read `spec_lock.md`, regenerate **only that page** in-context (no sub-agents). Re-run checker |
+| **3** | Same as attempt 2 for any remaining failures. Re-run checker |
+| **Exhausted** | ⛔ STOP. Report to user: failing filenames + full error text. Do NOT proceed to Logic Construction until user authorises |
+
 - `warning` entries (low-res image, non-PPT-safe font tail, etc.): fix when straightforward, otherwise acknowledge and release.
 - Run against `svg_output/` (not after `finalize_svg.py` — finalize rewrites SVG and masks violations).
+- ⚠️ SVG regeneration MUST happen in the current main-agent context — Rule #6 prohibits sub-agent delegation.
 
 **Logic Construction Phase**: generate speaker notes → `<project_path>/notes/total.md`
 
