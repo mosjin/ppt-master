@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-05-07: SVG Quality Check Gate — max-3 self-correcting loop (Issue #133)
+
+### 1. Problem
+
+Step 6 Quality Check Gate language was vague: "return to Visual Construction, regenerate that page, re-run check" with no retry limit or stop condition. AI agents interpreted this as: retry silently forever, or quietly skip failing pages.
+
+### 2. Root Cause
+
+- No explicit max-attempts bound → unbounded loop risk
+- No `⛔ STOP` escalation protocol → AI would never block and ask the user
+- Three quality checks missing: placeholder scaffold SVG (issue #125), WCAG AA 4.5:1 contrast (issue #133), font-size < 10 px (issue #133)
+
+### 3. Fix
+
+**SKILL.md Step 6** — Quality Check Gate now has an explicit retry table:
+
+| Attempt | Action |
+|---------|--------|
+| 1 | Run checker. 0 errors → proceed |
+| 2 | Regenerate only failing pages in-context (no sub-agents). Re-run checker |
+| 3 | Same as attempt 2. Re-run checker |
+| Exhausted | ⛔ STOP. Report failing filenames + full error text. Wait for user authorisation |
+
+**`scripts/svg_quality_checker.py`** — Three new methods added to `SVGQualityChecker`:
+- Check 9 `_check_placeholder_phrases` — detects "详见课堂版" scaffold SVG
+- Check 10 `_check_wcag_contrast` — WCAG AA 4.5:1; excludes `_CODE_BG_COLORS` to avoid false positives on code blocks
+- Check 11 `_check_font_size_tiny` — font-size < 10 px is unreadable on projection
+
+### 4. Lessons
+
+- **Rule**: Every AI-facing quality gate MUST have a numeric max-retry bound and an explicit `⛔ STOP` + escalation path.
+- **Why**: Without a stop condition the AI retries silently (burning context) or skips failures silently (shipping bad slides).
+
+- **Rule**: Code-block backgrounds (`#1e1e1e`, `#2d2d2d`, etc.) must be excluded from the WCAG contrast candidate set — they use intentional dark-on-dark syntax highlighting.
+- **Why**: Including them as background candidates produces false positives on every slide that has a code panel.
+
+---
+
 ## 2026-05-06: Gemini CLI skill 架构重构 + CRLF 致命 bug 修复
 
 ### 1. Problem
