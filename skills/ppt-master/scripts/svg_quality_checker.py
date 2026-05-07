@@ -243,6 +243,15 @@ class SVGQualityChecker:
                 if not self.template_mode:
                     self._check_sourced_image_attribution(content, svg_path, result)
 
+                # 9. Placeholder-scaffold detection (EduForge issue #125)
+                self._check_placeholder_phrases(content, result)
+
+                # 10. WCAG AA minimum contrast 4.5:1 (issue #133)
+                self._check_wcag_contrast(content, result)
+
+                # 11. Minimum font-size 10 px (issue #133)
+                self._check_font_size_tiny(content, result)
+
             # Determine pass/fail
             result['passed'] = len(result['errors']) == 0
 
@@ -747,6 +756,81 @@ class SVGQualityChecker:
                     f"({license_token}). Add compact credit text per "
                     f"references/image-searcher.md §7."
                 )
+
+    # -----------------------------------------------------------------------
+    # Checks 9–11 — EduForge / issue #133 additions
+    # -----------------------------------------------------------------------
+
+    _PLACEHOLDER_PHRASES = (
+        "详见课堂版",
+        "教师按 .md 内容讲解",
+        "教师按.md内容讲解",
+    )
+
+    _CODE_BG_COLORS = frozenset({
+        "#1e1e1e", "#2d2d2d", "#263238", "#282828",
+        "#1a1a2e", "#0d1117", "#121212", "#1b1b1b",
+        "#212121", "#252526",
+    })
+
+    @staticmethod
+    def _hex_luminance(hex_color: str) -> float:
+        """Relative luminance (0..1) for a CSS hex color string (WCAG 2.1)."""
+        h = hex_color.lstrip("#")
+        if len(h) == 3:
+            h = h[0] * 2 + h[1] * 2 + h[2] * 2
+        if len(h) != 6:
+            return 0.5
+        r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+        def _lin(c: float) -> float:
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+        return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+    def _check_placeholder_phrases(self, content: str, result: Dict) -> None:
+        """Error: lightweight scaffold SVG — contains placeholder text (issue #125)."""
+        for phrase in self._PLACEHOLDER_PHRASES:
+            if phrase in content:
+                result['errors'].append(
+                    f"Placeholder scaffold text detected ({phrase!r}) — "
+                    "regenerate with full content (issue #125)"
+                )
+                return
+
+    def _check_wcag_contrast(self, content: str, result: Dict) -> None:
+        """Error: text/background pair fails WCAG AA 4.5:1 contrast ratio (issue #133)."""
+        rect_fills = re.findall(
+            r'<rect[^>]+fill\s*=\s*["\']?(#[0-9a-fA-F]{3,6})["\']?', content)
+        text_fills = re.findall(
+            r'<text[^>]+fill\s*=\s*["\']?(#[0-9a-fA-F]{3,6})["\']?', content)
+
+        candidate_bgs = [c for c in rect_fills if c.lower() not in self._CODE_BG_COLORS]
+        if not candidate_bgs or not text_fills:
+            return
+
+        bg, fg = candidate_bgs[0], text_fills[0]
+        la, lb = self._hex_luminance(bg), self._hex_luminance(fg)
+        lighter, darker = max(la, lb), min(la, lb)
+        ratio = (lighter + 0.05) / (darker + 0.05)
+        if ratio < 4.5:
+            result['errors'].append(
+                f"WCAG AA contrast failure: {fg} on {bg} = {ratio:.2f}:1 "
+                "(minimum 4.5:1 — issue #133)"
+            )
+
+    def _check_font_size_tiny(self, content: str, result: Dict) -> None:
+        """Error: font-size below 10 px — unreadable on projected slides (issue #133)."""
+        for m in re.finditer(
+            r'font-size\s*=\s*["\']?(\d+(?:\.\d+)?)(px)?["\']?', content, re.IGNORECASE
+        ):
+            size = float(m.group(1))
+            if size < 10:
+                result['errors'].append(
+                    f"font-size {size}px is below the 10 px minimum "
+                    "(unreadable on projection — issue #133)"
+                )
+                return
 
     @staticmethod
     def _normalize_size(value: str) -> str:
