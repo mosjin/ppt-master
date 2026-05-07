@@ -36,7 +36,7 @@
         "office",
         "document-conversion"
       ],
-      "strict": false,
+      "strict": true,
       "skills": [
         "./skills/ppt-master"
       ]
