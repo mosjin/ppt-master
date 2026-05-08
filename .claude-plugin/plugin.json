@@ -1,6 +1,6 @@
 {
   "name": "ppt-master",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "AI-driven SVG+PPTX generation. v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). v2.6.0 upstream merge base.",
   "author": {
     "name": "mosjin",
