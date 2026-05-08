@@ -2,27 +2,21 @@
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ppt-master",
   "owner": {
-    "name": "Hugo He",
-    "email": "heyug3@gmail.com",
-    "url": "https://github.com/hugohe3"
-  },
-  "metadata": {
-    "description": "PPT Master skill — AI generates natively editable PPTX from any document",
-    "version": "2.7.1"
+    "name": "mosjin",
+    "url": "https://github.com/mosjin"
   },
   "plugins": [
     {
       "name": "ppt-master",
       "source": "./",
-      "description": "Generate natively editable PPTX from PDF / DOCX / URL / Markdown — real DrawingML shapes, text boxes, charts, and animations. Note: this plugin ships only the skill files; you must also `pip install -r requirements.txt` from the project root for the Python post-processing scripts to run.",
-      "version": "2.7.1",
+      "description": "AI-driven SVG+PPTX generation. v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). v2.6.0 upstream merge base.",
+      "version": "2.7.2",
       "author": {
-        "name": "Hugo He",
-        "email": "heyug3@gmail.com",
-        "url": "https://www.hehugo.com/"
+        "name": "mosjin",
+        "url": "https://github.com/mosjin"
       },
-      "homepage": "https://github.com/hugohe3/ppt-master",
-      "repository": "https://github.com/hugohe3/ppt-master",
+      "homepage": "https://github.com/mosjin/ppt-master",
+      "repository": "https://github.com/mosjin/ppt-master",
       "license": "MIT",
       "category": "productivity",
       "keywords": [
@@ -33,10 +27,9 @@
         "drawingml",
         "ai",
         "skill",
-        "office",
-        "document-conversion"
+        "csp-s",
+        "eduforge"
       ],
-      "strict": true,
       "skills": [
         "./skills/ppt-master"
       ]
