@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "ppt-master",
   "owner": {
@@ -10,7 +10,7 @@
       "name": "ppt-master",
       "source": "./",
       "description": "AI-driven SVG+PPTX generation. v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). v2.6.0 upstream merge base.",
-      "version": "2.7.2",
+      "version": "2.7.3",
       "author": {
         "name": "mosjin",
         "url": "https://github.com/mosjin"
