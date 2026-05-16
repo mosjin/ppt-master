@@ -69,6 +69,25 @@ def _adj_value(sp_pr: ET.Element | None, adj_name: str = "adj",
     return default_pct
 
 
+def _adj_int_value(sp_pr: ET.Element | None, adj_name: str,
+                   default: int) -> int:
+    """Read an adjustment value as the original DrawingML integer."""
+    if sp_pr is None:
+        return default
+    av_lst = sp_pr.find(".//a:avLst", NS)
+    if av_lst is None:
+        return default
+    for gd in av_lst.findall("a:gd", NS):
+        if gd.attrib.get("name") == adj_name:
+            fmla = gd.attrib.get("fmla", "")
+            if fmla.startswith("val "):
+                try:
+                    return int(float(fmla[4:]))
+                except ValueError:
+                    return default
+    return default
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
@@ -83,7 +102,8 @@ def convert_prst_geom(
     Returns None if the preset has no v1 mapping; the caller can then choose
     to render a fallback rect.
     """
-    if prst == "line":
+    # Line-style presets accept zero width OR zero height (axis-aligned lines).
+    if prst in ("line", "straightConnector1"):
         if xfrm.w == 0 and xfrm.h == 0:
             return None
         return _line(xfrm, sp_pr)
@@ -134,6 +154,84 @@ def _round_rect(xfrm: Xfrm, sp_pr) -> GeomResult:
             "rx": fmt_num(radius),
             "ry": fmt_num(radius),
         },
+    )
+
+
+def _round_2_diag_rect(xfrm: Xfrm, sp_pr) -> GeomResult:
+    """Rectangle with two diagonal rounded corners.
+
+    DrawingML's round2DiagRect rounds the top-left and bottom-right corners.
+    SVG has no direct primitive for per-corner radii, so emit a native-friendly
+    path with quadratic curves.
+    """
+    adj = _adj_value(sp_pr, "adj", default_pct=0.16667)
+    r = min(adj * min(xfrm.w, xfrm.h), min(xfrm.w, xfrm.h) / 2.0)
+    x, y, w, h = xfrm.x, xfrm.y, xfrm.w, xfrm.h
+    d = (
+        f"M {fmt_num(x + r)} {fmt_num(y)} "
+        f"L {fmt_num(x + w)} {fmt_num(y)} "
+        f"L {fmt_num(x + w)} {fmt_num(y + h - r)} "
+        f"Q {fmt_num(x + w)} {fmt_num(y + h)} {fmt_num(x + w - r)} {fmt_num(y + h)} "
+        f"L {fmt_num(x)} {fmt_num(y + h)} "
+        f"L {fmt_num(x)} {fmt_num(y + r)} "
+        f"Q {fmt_num(x)} {fmt_num(y)} {fmt_num(x + r)} {fmt_num(y)} Z"
+    )
+    return GeomResult(tag="path", path_d=d)
+
+
+def _round_2_same_rect(xfrm: Xfrm, sp_pr) -> GeomResult:
+    """Rectangle with top and bottom same-side corner adjustments.
+
+    Mirrors the OOXML preset definition: adj1 controls the top pair of corners,
+    adj2 controls the bottom pair. A common title-tab setting is adj1=0 and
+    adj2=50000, yielding square top corners and a capsule-like bottom edge.
+    """
+    x, y, w, h = xfrm.x, xfrm.y, xfrm.w, xfrm.h
+    ss = min(w, h)
+    adj1 = _adj_int_value(sp_pr, "adj1", 16667)
+    adj2 = _adj_int_value(sp_pr, "adj2", 0)
+    tx = min(adj1 / 100000.0, 0.5) * ss
+    bx = min(adj2 / 100000.0, 0.5) * ss
+    parts = [
+        f"M {fmt_num(x + tx)} {fmt_num(y)}",
+        f"L {fmt_num(x + w - tx)} {fmt_num(y)}",
+    ]
+    if tx > 0:
+        parts.append(
+            f"A {fmt_num(tx)} {fmt_num(tx)} 0 0 1 "
+            f"{fmt_num(x + w)} {fmt_num(y + tx)}"
+        )
+    parts.append(f"L {fmt_num(x + w)} {fmt_num(y + h - bx)}")
+    if bx > 0:
+        parts.append(
+            f"A {fmt_num(bx)} {fmt_num(bx)} 0 0 1 "
+            f"{fmt_num(x + w - bx)} {fmt_num(y + h)}"
+        )
+    else:
+        parts.append(f"L {fmt_num(x + w)} {fmt_num(y + h)}")
+    parts.append(f"L {fmt_num(x + bx)} {fmt_num(y + h)}")
+    if bx > 0:
+        parts.append(
+            f"A {fmt_num(bx)} {fmt_num(bx)} 0 0 1 "
+            f"{fmt_num(x)} {fmt_num(y + h - bx)}"
+        )
+    else:
+        parts.append(f"L {fmt_num(x)} {fmt_num(y + h)}")
+    parts.append(f"L {fmt_num(x)} {fmt_num(y + tx)}")
+    if tx > 0:
+        parts.append(
+            f"A {fmt_num(tx)} {fmt_num(tx)} 0 0 1 "
+            f"{fmt_num(x + tx)} {fmt_num(y)}"
+        )
+    d = " ".join(parts) + " Z"
+    return GeomResult(
+        tag="path",
+        attrs={
+            "data-pptx-prst": "round2SameRect",
+            "data-pptx-adj1": str(adj1),
+            "data-pptx-adj2": str(adj2),
+        },
+        path_d=d,
     )
 
 
@@ -213,14 +311,89 @@ def _parallelogram(xfrm: Xfrm, sp_pr) -> GeomResult:
 
 
 def _trapezoid(xfrm: Xfrm, sp_pr) -> GeomResult:
-    """adj = horizontal inset of top edge (default 25%)."""
-    adj = _adj_value(sp_pr, "adj", default_pct=0.25)
-    inset = adj * xfrm.w
+    """OOXML trapezoid: x1 = ss * adj / 200000 (ss = min(w, h)).
+
+    adj default 25000; maxAdj caps at 50000 * w / ss so the top can't invert.
+    """
+    adj = _adj_int_value(sp_pr, "adj", 25000)
+    ss = min(xfrm.w, xfrm.h)
+    if ss <= 0:
+        return _rect(xfrm, sp_pr)
+    max_adj = 50000.0 * xfrm.w / ss
+    a = max(0.0, min(float(adj), max_adj))
+    inset = ss * a / 200000.0
     return _polygon([
         (xfrm.x + inset, xfrm.y),
         (xfrm.x + xfrm.w - inset, xfrm.y),
         (xfrm.x + xfrm.w, xfrm.y + xfrm.h),
         (xfrm.x, xfrm.y + xfrm.h),
+    ])
+
+
+def _chevron(xfrm: Xfrm, sp_pr) -> GeomResult:
+    """OOXML chevron: dx = ss * adj / 100000 (ss = min(w, h)), default adj=50000.
+
+    Both the right-pointing tip length and the left back-notch depth equal dx,
+    which is what lets a series of chevrons tile flush.
+    """
+    adj = _adj_int_value(sp_pr, "adj", 50000)
+    x, y, w, h = xfrm.x, xfrm.y, xfrm.w, xfrm.h
+    ss = min(w, h)
+    if ss <= 0:
+        return _rect(xfrm, sp_pr)
+    max_adj = 100000.0 * w / ss
+    a = max(0.0, min(float(adj), max_adj))
+    dx = ss * a / 100000.0
+    cy = y + h / 2.0
+    return _polygon([
+        (x, y),
+        (x + w - dx, y),
+        (x + w, cy),
+        (x + w - dx, y + h),
+        (x, y + h),
+        (x + dx, cy),
+    ])
+
+
+def _home_plate(xfrm: Xfrm, sp_pr) -> GeomResult:
+    """OOXML homePlate: tip length = ss * adj / 100000; body fills 0..(w - tip).
+
+    Same dx as chevron so a homePlate→chevron series tiles seamlessly.
+    """
+    adj = _adj_int_value(sp_pr, "adj", 50000)
+    x, y, w, h = xfrm.x, xfrm.y, xfrm.w, xfrm.h
+    ss = min(w, h)
+    if ss <= 0:
+        return _rect(xfrm, sp_pr)
+    max_adj = 100000.0 * w / ss
+    a = max(0.0, min(float(adj), max_adj))
+    dx = ss * a / 100000.0
+    split = w - dx
+    cy = y + h / 2.0
+    return _polygon([
+        (x, y),
+        (x + split, y),
+        (x + w, cy),
+        (x + split, y + h),
+        (x, y + h),
+    ])
+
+
+def _flow_chart_extract(xfrm: Xfrm, _sp_pr) -> GeomResult:
+    """Flowchart "Extract": upward-pointing isoceles triangle."""
+    return _polygon([
+        (xfrm.x + xfrm.w / 2.0, xfrm.y),
+        (xfrm.x + xfrm.w, xfrm.y + xfrm.h),
+        (xfrm.x, xfrm.y + xfrm.h),
+    ])
+
+
+def _flow_chart_merge(xfrm: Xfrm, _sp_pr) -> GeomResult:
+    """Flowchart "Merge": downward-pointing isoceles triangle."""
+    return _polygon([
+        (xfrm.x, xfrm.y),
+        (xfrm.x + xfrm.w, xfrm.y),
+        (xfrm.x + xfrm.w / 2.0, xfrm.y + xfrm.h),
     ])
 
 
@@ -361,6 +534,27 @@ def _up_arrow(xfrm: Xfrm, sp_pr) -> GeomResult:
     ])
 
 
+# ---------- Decorative shapes ----------
+
+def _plaque(xfrm: Xfrm, sp_pr) -> GeomResult:
+    """Approximate DrawingML plaque with concave curved corner cuts."""
+    adj = _adj_value(sp_pr, "adj", default_pct=0.16667)
+    r = min(adj * min(xfrm.w, xfrm.h), min(xfrm.w, xfrm.h) / 2.0)
+    x, y, w, h = xfrm.x, xfrm.y, xfrm.w, xfrm.h
+    d = (
+        f"M {fmt_num(x + r)} {fmt_num(y)} "
+        f"L {fmt_num(x + w - r)} {fmt_num(y)} "
+        f"Q {fmt_num(x + w - r)} {fmt_num(y + r)} {fmt_num(x + w)} {fmt_num(y + r)} "
+        f"L {fmt_num(x + w)} {fmt_num(y + h - r)} "
+        f"Q {fmt_num(x + w - r)} {fmt_num(y + h - r)} {fmt_num(x + w - r)} {fmt_num(y + h)} "
+        f"L {fmt_num(x + r)} {fmt_num(y + h)} "
+        f"Q {fmt_num(x + r)} {fmt_num(y + h - r)} {fmt_num(x)} {fmt_num(y + h - r)} "
+        f"L {fmt_num(x)} {fmt_num(y + r)} "
+        f"Q {fmt_num(x + r)} {fmt_num(y + r)} {fmt_num(x + r)} {fmt_num(y)} Z"
+    )
+    return GeomResult(tag="path", path_d=d)
+
+
 # ---------- Pie / chord / arc (path-based) ----------
 
 def _pie(xfrm: Xfrm, sp_pr) -> GeomResult:
@@ -418,8 +612,13 @@ _PRESET_HANDLERS = {
     # Core 4 (svg_to_pptx round-trip)
     "rect": _rect,
     "roundRect": _round_rect,
+    "round2DiagRect": _round_2_diag_rect,
+    "round2SameRect": _round_2_same_rect,
     "ellipse": _ellipse,
     "line": _line,
+    # Straight connector: same geometry as a `line` preset; head/tail markers
+    # come from <a:ln>.
+    "straightConnector1": _line,
 
     # Polygons
     "triangle": _triangle,
@@ -427,6 +626,10 @@ _PRESET_HANDLERS = {
     "diamond": _diamond,
     "parallelogram": _parallelogram,
     "trapezoid": _trapezoid,
+    "chevron": _chevron,
+    "homePlate": _home_plate,
+    "flowChartExtract": _flow_chart_extract,
+    "flowChartMerge": _flow_chart_merge,
     "pentagon": _pentagon,
     "hexagon": _hexagon,
     "heptagon": _heptagon,
@@ -451,6 +654,9 @@ _PRESET_HANDLERS = {
     "leftArrow": _left_arrow,
     "downArrow": _down_arrow,
     "upArrow": _up_arrow,
+
+    # Decorative
+    "plaque": _plaque,
 
     # Pie / chord / arc
     "pie": _pie,

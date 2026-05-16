@@ -8,6 +8,12 @@
 
 几乎所有常见格式都支持：**PDF**、**DOCX**、**PPTX**、**EPUB**、**HTML**、**LaTeX**、**RST**、**网页链接**（包括微信公众号文章）、**Markdown**，或者直接在对话中粘贴文字内容。AI 代理会自动将源材料转换为 Markdown 后再生成幻灯片。
 
+## Q: 只有一个主题或想法、没有任何资料，也能生成吗？
+
+可以。直接告诉 AI 你想做的主题或场景（如"做一个关于宫崎骏的 PPT"、"介绍我们公司新产品"），AI 会自动启动 **topic-research 工作流**——通过网页搜索抓取权威来源（Wikipedia / 官网 / 机构发布），整理成 Markdown 资料文档 + 配图集后再走主流程生成幻灯片。
+
+效果取决于公开网页的覆盖度。如果你已有专业资料（论文、内部文档），直接把文件给 AI 比联网检索更准。
+
 ## Q: 除了 PPT 还能生成其他格式吗？
 
 可以。除了标准的 **16:9** 和 **4:3** 演示文稿格式，PPT Master 还内置了社交媒体和营销类格式：
@@ -72,6 +78,8 @@ python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation fade     
 python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation-trigger on-click   # 改为单击触发，演讲者控制节奏
 ```
 
+`on-click` 适合现场演示。通过 `--recorded-narration` 做旁白/视频导出时会拒绝它，因为 PPT Master 只写页面级计时，不生成对象级点击计时；带旁白的 deck 请使用 `after-previous` 或 `with-previous`。
+
 完整效果列表、`<g id="...">` 锚点机制、降级行为、限制：见 [转场与动画](./animations.md)。
 
 ## Q: 推荐用什么 AI 模型？
@@ -81,6 +89,21 @@ python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation-trigger o
 **GPT 系列**早期版本排版问题较多——文字超出容器、元素错位、坐标计算失误。较新的版本（如 GPT-5.5）在这方面已有明显进步，实际效果可以接受；如果遇到问题，可以告知 AI 修正具体页面。
 
 其他模型（Gemini、GLM、MiniMax 等）效果参差不齐。总体来说，前端/视觉能力越强的模型，生成效果越好。
+
+## Q: 有人说 PPT Master "只是个玩具"——这个评价准确吗？
+
+不准确。PPT Master 是一个 **harness**，不是完整的 agent——`harness + model = agent`，输出上限完全由模型决定，而不是由 harness 本身决定。用弱模型或小上下文窗口来评价 PPT Master，就好比挂着一档开跑车然后说它跑不快。
+
+**发挥完整实力的组合：**
+
+- **Claude 大上下文窗口**（推荐 ~100 万 token 级别）：大上下文让 Executor 在同一个会话里看到全部已生成页面，在不拆分运行的前提下保持整份 deck 的视觉一致性。上下文不足时被迫走拆分模式，两段之间会出现明显的风格漂移。
+- **AI 生图，推荐 `gpt-image-2`**（或同等质量）：配图水平是 deck 整体观感的最大变量。用占位级的网络图片和用真正贴合内容的 AI 生成图，视觉效果完全是两个量级。
+
+如果你看到的效果差强人意，先对照以下几点检查你的配置，再下结论：用的什么模型？上下文开了多大？有没有接入图片生成 API？同样的工作流，Claude Opus 配 100 万 token 上下文配 `gpt-image-2` 的结果，和小参数开源模型配零配置的结果，是截然不同的体验。
+
+**harness 决定工作流上限，model 决定质量上限。** 如果 agent 能力不达预期，请先升级模型，再来评价 harness。
+
+> **没有 Claude 渠道？** 本项目赞助商 [PackyCode](https://www.packyapi.com/register?aff=ppt-master) 提供 Claude 及其他主流模型的按量付费接入——无需订阅，无需境外信用卡，支持国内支付，开箱即用。充值时填写优惠码 **`ppt-master`** 享 9 折。
 
 ## Q: 文字超出边框 / 元素错位怎么办？
 
@@ -97,6 +120,14 @@ python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation-trigger o
 一份典型的 10–15 页 PPT 大约需要 **10–20 分钟**（使用吞吐较快的模型）。生成流程是**故意串行的**（逐页生成），这样才能保持前后页面的视觉一致性——并行生成方案曾经测试过，结果是各画各的、缺乏整体观。
 
 如果感觉生成很慢，检查一下模型的 token 吞吐速度。瓶颈通常在模型的输出速度，而不是脚本本身。
+
+## Q: 长 PPT 一次生成会不会上下文爆掉？
+
+默认推荐**一次性连续生成**——10–15 页的 deck 在 200K 上下文窗口下完全够用，跨页视觉一致性也最好（Executor 看到前几页 SVG 后会主动对齐风格、字号、节奏）。
+
+只有信号偏重的场景（页数 ≥ 18 / 源材料很厚 / 走过 topic-research 累积大量 web 抓取），AI 才会在策略师阶段给出**两段式（拆分模式）**的可选提示：第一阶段（八项确认 + 图片获取）结束后停止当前对话；你新开聊天窗口，输入 `继续生成 projects/<项目名>` 进入第二阶段（SVG 生成 + 导出）。新会话从磁盘重新加载 `design_spec` / `spec_lock` / `sources` / `images` 继续执行。
+
+两段式是**折中方案**——付出约 6K tokens 的 SKILL.md 重读成本，换得 60–200K 的 Phase A 噪声丢弃，并把节省下来的窗口空间用于 Phase B 主动重读 `sources/` 做内容增稠。**信号正常时不需要**，提示也不会出现；用户随时可以忽略提示，走默认连续模式。
 
 ## Q: 能在导出前预览或修正某一页吗？
 

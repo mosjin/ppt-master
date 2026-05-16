@@ -313,6 +313,7 @@ python3 scripts/svg_to_pptx.py <project_path>
 - `-t <effect>` — page transition (`fade` / `push` / `wipe` / `split` / `strips` / `cover` / `random` / `none`; default `fade`)
 - `-a <effect>` — per-element entrance animation (`fade` / `mixed` / `random` / one of 22 named effects / `none`; default `mixed`). Anchors on top-level `<g id="...">` groups.
 - `--animation-trigger {on-click,with-previous,after-previous}` — Start mode matching PowerPoint's animation-pane Start dropdown. Default `after-previous` (cascade on slide entry; pace via `--animation-stagger <seconds>`); `on-click` advances per click; `with-previous` plays all groups together.
+- `--animation-config <path>` — optional object-level animation sidecar. Default: `<project>/animations.json` when present.
 - `--auto-advance <seconds>` — kiosk-style auto-play
 
 **Optional recorded narration** (only when the user asks for narrated/video export):
@@ -323,7 +324,10 @@ python3 scripts/svg_to_pptx.py <project_path> --recorded-narration audio
 ```
 
 - `notes_to_audio.py` reads split `notes/*.md` files and writes one audio file per slide to `audio/`. Default `edge` output is MP3; configured cloud providers may output MP3 or WAV depending on provider settings.
+- `--recorded-narration audio` prepares PowerPoint's recorded timings and narrations: every slide needs matching `m4a` / `mp3` / `wav` audio, every duration must be readable by `ffprobe`, and `on-click` object animation is rejected.
 - `--recorded-narration audio` embeds matching audio, keeps speaker notes, and sets slide timings from audio duration.
+- `--narration-audio-dir audio` is the lower-level embedding path for partial audio coverage; it does not prepare a complete recorded-timings export.
+- Long-audio import and automatic long-audio splitting are not supported.
 
 Full reference: [`animations.md`](animations.md).
 

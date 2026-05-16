@@ -28,9 +28,21 @@ Strategy:
 from __future__ import annotations
 
 import base64
+import hashlib
+import io
 import mimetypes
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from xml.etree import ElementTree as ET
+
+try:
+    from PIL import Image, ImageEnhance
+except ImportError:  # pragma: no cover - optional visual enhancement dependency
+    Image = None
+    ImageEnhance = None
 
 from .emu_units import NS, Xfrm, fmt_num
 from .ooxml_loader import OoxmlPackage, PartRef
@@ -46,6 +58,10 @@ class PictureResult:
     media: dict[str, bytes] = field(default_factory=dict)
 
 
+class MediaResolutionError(RuntimeError):
+    """Raised when a PPTX media relationship cannot be reproduced as SVG."""
+
+
 def convert_blip_fill(
     blip_fill_elem: ET.Element,
     xfrm: Xfrm,
@@ -54,6 +70,7 @@ def convert_blip_fill(
     *,
     media_subdir: str = "assets",
     embed_inline: bool = False,
+    asset_name_map: dict[str, str] | None = None,
 ) -> PictureResult:
     """Convert an <a:blipFill> element to SVG <image>.
 
@@ -66,19 +83,26 @@ def convert_blip_fill(
         return PictureResult()
 
     rid = blip.attrib.get(f"{{{NS['r']}}}embed")
+    linked_rid = blip.attrib.get(f"{{{NS['r']}}}link")
     if not rid:
+        if linked_rid:
+            raise MediaResolutionError(
+                "Linked image relationships are not supported; embed the image in PowerPoint first"
+            )
         return PictureResult()
 
     target = slide_part.resolve_rel(rid)
     if not target:
-        return PictureResult()
+        raise MediaResolutionError(f"Image relationship {rid} cannot be resolved in {slide_part.path}")
 
     # Read the bytes
     img_bytes = pkg.read_media(target)
     if img_bytes is None:
-        return PictureResult()
+        raise MediaResolutionError(f"Embedded image part is missing: {target}")
 
-    filename = pkg.media_filename(target)
+    filename = (asset_name_map or {}).get(target, pkg.media_filename(target))
+    filename, img_bytes = _normalize_office_media(filename, img_bytes)
+    filename, img_bytes = _apply_blip_image_effects(filename, img_bytes, blip)
     href = _build_href(filename, img_bytes, media_subdir, embed_inline)
 
     # srcRect: l/t/r/b in 1/100000ths (so 50000 = 50%).
@@ -126,6 +150,7 @@ def convert_picture(
     *,
     media_subdir: str = "assets",
     embed_inline: bool = False,
+    asset_name_map: dict[str, str] | None = None,
 ) -> PictureResult:
     """Translate <p:pic> to SVG <image> (or nested <svg>+<image> for cropping)."""
     blip_fill = pic_elem.find("p:blipFill", NS)
@@ -136,12 +161,57 @@ def convert_picture(
         blip_fill, xfrm, slide_part, pkg,
         media_subdir=media_subdir,
         embed_inline=embed_inline,
+        asset_name_map=asset_name_map,
     )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_OFFICE_VECTOR_EXTS = {".emf", ".wmf"}
+
+
+def _normalize_office_media(filename: str, img_bytes: bytes) -> tuple[str, bytes]:
+    """Convert Office-only vector image formats to browser-renderable PNG.
+
+    PPTX can contain EMF/WMF assets that PowerPoint renders natively but SVG
+    viewers generally do not. Keep the original asset in the manifest layer;
+    the SVG view uses a PNG preview when the local system can make one.
+    """
+    suffix = Path(filename).suffix.lower()
+    if suffix not in _OFFICE_VECTOR_EXTS:
+        return filename, img_bytes
+
+    converted = _convert_office_vector_to_png(filename, img_bytes)
+    if converted is None:
+        return filename, img_bytes
+    stem = Path(filename).stem
+    return f"{stem}_preview.png", converted
+
+
+def _convert_office_vector_to_png(filename: str, img_bytes: bytes) -> bytes | None:
+    magick = shutil.which("magick")
+    if not magick:
+        return None
+    suffix = Path(filename).suffix.lower() or ".bin"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        src = tmp_dir / f"source{suffix}"
+        dst = tmp_dir / "preview.png"
+        src.write_bytes(img_bytes)
+        try:
+            subprocess.run(
+                [magick, str(src), str(dst)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        if not dst.exists():
+            return None
+        return dst.read_bytes()
 
 def _parse_src_rect(elem: ET.Element | None) -> tuple[float, float, float, float] | None:
     """Convert <a:srcRect l t r b="1/100000"/> to (x, y, w, h) in unit space."""
@@ -163,6 +233,81 @@ def _parse_src_rect(elem: ET.Element | None) -> tuple[float, float, float, float
     if vb_w <= 0 or vb_h <= 0:
         return None
     return vb_x, vb_y, vb_w, vb_h
+
+
+def _apply_blip_image_effects(
+    filename: str,
+    img_bytes: bytes,
+    blip: ET.Element,
+) -> tuple[str, bytes]:
+    """Bake supported DrawingML blip effects into extracted image bytes.
+
+    Keeping the SVG as a plain <image> avoids introducing CSS filters that the
+    downstream native PPTX converter cannot reliably map back to DrawingML.
+    """
+    lum = blip.find("a:lum", NS)
+    if lum is None:
+        return filename, img_bytes
+
+    bright = _signed_pct_attr(lum, "bright")
+    contrast = _signed_pct_attr(lum, "contrast")
+    if bright is None and contrast is None:
+        return filename, img_bytes
+    if Image is None or ImageEnhance is None:
+        return filename, img_bytes
+
+    try:
+        image = Image.open(io.BytesIO(img_bytes))
+        output_format = image.format or _pil_format_from_filename(filename)
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+        if bright is not None:
+            image = ImageEnhance.Brightness(image).enhance(max(0.0, 1.0 + bright))
+        if contrast is not None:
+            image = ImageEnhance.Contrast(image).enhance(max(0.0, 1.0 + contrast))
+
+        out = io.BytesIO()
+        save_format = output_format or "PNG"
+        save_kwargs = {"quality": 95} if save_format.upper() in {"JPEG", "JPG"} else {}
+        image.save(out, format=save_format, **save_kwargs)
+        effect_key = f"lum-{bright}-{contrast}".encode("ascii")
+        digest = hashlib.sha1(effect_key).hexdigest()[:8]
+        return _effect_filename(filename, digest, save_format), out.getvalue()
+    except Exception:
+        return filename, img_bytes
+
+
+def _signed_pct_attr(elem: ET.Element, name: str) -> float | None:
+    val = elem.attrib.get(name)
+    if val is None:
+        return None
+    try:
+        return float(val) / 100000.0
+    except ValueError:
+        return None
+
+
+def _pil_format_from_filename(filename: str) -> str | None:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext in {"jpg", "jpeg"}:
+        return "JPEG"
+    if ext == "png":
+        return "PNG"
+    if ext == "gif":
+        return "GIF"
+    if ext == "webp":
+        return "WEBP"
+    return None
+
+
+def _effect_filename(filename: str, digest: str, image_format: str) -> str:
+    stem, sep, ext = filename.rpartition(".")
+    if not sep:
+        ext = (image_format or "png").lower()
+        stem = filename
+    if ext.lower() == "jpg":
+        ext = "jpeg"
+    return f"{stem}_fx_{digest}.{ext}"
 
 
 def _pct_attr(elem: ET.Element, name: str) -> float:

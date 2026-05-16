@@ -28,7 +28,7 @@ from xml.etree import ElementTree as ET
 from .color_resolver import ColorPalette, find_color_elem, resolve_color
 from .custgeom_to_svg import convert_custom_geom
 from .effect_to_svg import convert_effects
-from .emu_units import NS, fmt_num
+from .emu_units import NS, Xfrm, fmt_num
 from .fill_to_svg import resolve_fill
 from .ln_to_svg import resolve_stroke
 from .ooxml_loader import OoxmlPackage, PartRef, SlideRef
@@ -63,6 +63,8 @@ class AssemblyContext:
     embed_images: bool = False
     keep_hidden: bool = False
     group_id_prefix: str = ""
+    render_graphic_previews: bool = True
+    asset_name_map: dict[str, str] = field(default_factory=dict)
 
     # Sequence counters (single-element lists so handlers can mutate)
     grad_seq: list[int] = field(default_factory=lambda: [0])
@@ -90,6 +92,7 @@ def assemble_slide(
     embed_images: bool = False,
     keep_hidden: bool = False,
     inheritance_mode: str = "flat",
+    asset_name_map: dict[str, str] | None = None,
 ) -> tuple[str, dict[str, bytes]]:
     """Convert one slide to a complete SVG string + media files map.
 
@@ -110,13 +113,22 @@ def assemble_slide(
         media_subdir=media_subdir,
         embed_images=embed_images,
         keep_hidden=keep_hidden,
+        render_graphic_previews=(inheritance_mode == "flat"),
+        asset_name_map=asset_name_map or {},
     )
 
     canvas_w, canvas_h = pkg.slide_size_px
 
     # Background (cSld/bg) — emit as the first body element.
     body_parts: list[str] = []
-    bg_xml = _emit_background(slide, ctx, canvas_w, canvas_h)
+    bg_xml = (
+        _emit_background(slide, ctx, canvas_w, canvas_h)
+        if inheritance_mode == "flat"
+        else _emit_part_background(
+            SlideRef(index=slide.index, part=slide.part, layout=None, master=slide.master),
+            ctx, canvas_w, canvas_h,
+        )
+    )
     if bg_xml:
         body_parts.append(bg_xml)
 
@@ -168,6 +180,7 @@ def assemble_part_solo(
     media_subdir: str = "assets",
     embed_images: bool = False,
     keep_hidden: bool = False,
+    asset_name_map: dict[str, str] | None = None,
 ) -> tuple[str, dict[str, bytes]]:
     """Render a single slideMaster or slideLayout part as a standalone SVG.
 
@@ -198,6 +211,8 @@ def assemble_part_solo(
         embed_images=embed_images,
         keep_hidden=keep_hidden,
         group_id_prefix=f"{role}-",
+        render_graphic_previews=False,
+        asset_name_map=asset_name_map or {},
     )
 
     canvas_w, canvas_h = pkg.slide_size_px
@@ -225,11 +240,13 @@ def assemble_part_solo(
     if bg_xml:
         body_parts.append(bg_xml)
 
-    # Walk shapes, skipping placeholders (consistent with _emit_inherited_shapes).
+    # Walk shapes. Placeholders are visualized as lightweight layout guides in
+    # layered master/layout SVGs so template slots remain machine-visible.
     for node in walk_sp_tree(part.xml):
         if _is_placeholder_node(node):
-            continue
-        chunk = _convert_node(node, ctx, top_level=True)
+            chunk = _convert_placeholder_guide(node, ctx, top_level=True)
+        else:
+            chunk = _convert_node(node, ctx, top_level=True)
         if chunk:
             body_parts.append(chunk)
 
@@ -286,6 +303,7 @@ def _convert_shape(node: ShapeNode, ctx: AssemblyContext, *, top_level: bool) ->
             blip_fill_elem, node.xfrm, ctx.slide_part, ctx.pkg,
             media_subdir=ctx.media_subdir,
             embed_inline=ctx.embed_images,
+            asset_name_map=ctx.asset_name_map,
         )
         if blip_result.svg:
             blip_image = _clip_blip_image(blip_result.svg, geom, ctx)
@@ -296,16 +314,19 @@ def _convert_shape(node: ShapeNode, ctx: AssemblyContext, *, top_level: bool) ->
 
     # Text body (a:txBody)
     tx_body = node.xml.find("p:txBody", NS)
-    is_vertical = is_vertical_txbody(tx_body)
+    is_vertical = is_vertical_txbody(tx_body, node.xfrm)
+    text_default_fill = _resolve_text_style_default(node, ctx)
     if tx_body is not None and is_vertical:
         text_result = convert_vertical_txbody(
             tx_body, node.xfrm, ctx.palette,
             theme_fonts=ctx.theme_fonts,
+            default_fill=text_default_fill,
         )
     else:
         text_result = convert_txbody(
             tx_body, node.xfrm, ctx.palette,
             theme_fonts=ctx.theme_fonts,
+            default_fill=text_default_fill,
         ) if tx_body is not None else TextResult()
 
     if is_vertical:
@@ -369,11 +390,18 @@ def _build_geometry_xml(node: ShapeNode, sp_pr: ET.Element | None,
     if geom is None:
         return ""
 
+    # Resolve style defaults early so markers can adopt the theme stroke color
+    # when <a:ln> doesn't carry an explicit solidFill.
+    style_defaults = _resolve_shape_style_defaults(node, ctx)
+
     # Fill / stroke / effect
     fill = resolve_fill(sp_pr, ctx.palette,
                         id_prefix="g", id_seq=ctx.grad_seq)
-    stroke = resolve_stroke(sp_pr, ctx.palette,
-                            id_prefix="m", id_seq=ctx.marker_seq)
+    stroke = resolve_stroke(
+        sp_pr, ctx.palette,
+        id_prefix="m", id_seq=ctx.marker_seq,
+        style_stroke_default=style_defaults.get("stroke"),
+    )
     filter_id, effect_defs = convert_effects(sp_pr, ctx.palette,
                                              id_prefix="fx",
                                              id_seq=ctx.filter_seq)
@@ -383,6 +411,8 @@ def _build_geometry_xml(node: ShapeNode, sp_pr: ET.Element | None,
     ctx.defs.extend(effect_defs)
 
     attrs = {**fill.attrs, **stroke.attrs}
+    for key, value in style_defaults.items():
+        attrs.setdefault(key, value)
     if filter_id is not None:
         attrs["filter"] = f"url(#{filter_id})"
 
@@ -390,9 +420,6 @@ def _build_geometry_xml(node: ShapeNode, sp_pr: ET.Element | None,
     # behavior: a:noFill on shape-level fill if there's a txBody, else any
     # explicit fill present in spPr should already have been captured).
     if "fill" not in attrs:
-        # Default: transparent so the shape doesn't paint over text/images.
-        # PowerPoint's actual default is theme accent + style, but mimicking
-        # that requires reading slideMaster styles which is out of v1 scope.
         attrs["fill"] = "none"
     if "stroke" not in attrs:
         # Spec default for shapes is no stroke unless ln says otherwise.
@@ -403,8 +430,53 @@ def _build_geometry_xml(node: ShapeNode, sp_pr: ET.Element | None,
     return _geom_to_svg(geom, geom_attrs_xml)
 
 
+def _resolve_shape_style_defaults(node: ShapeNode, ctx: AssemblyContext) -> dict[str, str]:
+    """Resolve minimal p:style defaults used when spPr omits explicit style.
+
+    Full theme style matrix reproduction is intentionally out of scope here;
+    this only prevents common theme-styled placeholders/shapes from becoming
+    transparent or unstroked when their visible color lives in p:style.
+    """
+    style = node.xml.find("p:style", NS)
+    if style is None:
+        return {}
+
+    defaults: dict[str, str] = {}
+
+    fill_ref = style.find("a:fillRef", NS)
+    fill_color = _resolve_ref_color(fill_ref, ctx)
+    if fill_color:
+        defaults["fill"] = fill_color
+
+    ln_ref = style.find("a:lnRef", NS)
+    line_color = _resolve_ref_color(ln_ref, ctx)
+    if line_color:
+        defaults["stroke"] = line_color
+        defaults.setdefault("stroke-width", "1")
+
+    return defaults
+
+
+def _resolve_text_style_default(node: ShapeNode, ctx: AssemblyContext) -> str:
+    """Resolve p:style fontRef color used by runs without explicit fill."""
+    style = node.xml.find("p:style", NS)
+    if style is None:
+        return "#000000"
+    font_ref = style.find("a:fontRef", NS)
+    font_color = _resolve_ref_color(font_ref, ctx)
+    return font_color or "#000000"
+
+
+def _resolve_ref_color(ref_elem: ET.Element | None, ctx: AssemblyContext) -> str | None:
+    color_elem = find_color_elem(ref_elem)
+    hex_, _alpha = resolve_color(color_elem, ctx.palette)
+    return hex_
+
+
 def _geom_to_svg(geom: GeomResult, attrs_xml: str = "") -> str:
     """Serialize a resolved geometry with optional SVG attributes."""
+    if not attrs_xml:
+        attrs_xml = _attrs_to_xml(geom.attrs)
     if geom.tag == "path":
         return f'<path d="{geom.path_d}"{attrs_xml}/>'
     if geom.tag in ("polygon", "polyline"):
@@ -435,7 +507,7 @@ def _inject_clip_path(image_xml: str, clip_id: str) -> str:
     if image_xml.startswith("<image"):
         return image_xml.replace("<image", f"<image{clip_attr}", 1)
     if image_xml.startswith("<svg"):
-        return image_xml.replace("<svg", f"<svg{clip_attr}", 1)
+        return image_xml.replace("<svg", f'<svg data-pptx-crop="1"{clip_attr}', 1)
     return image_xml
 
 
@@ -448,6 +520,7 @@ def _convert_picture(node: ShapeNode, ctx: AssemblyContext, *, top_level: bool) 
         node.xml, node.xfrm, ctx.slide_part, ctx.pkg,
         media_subdir=ctx.media_subdir,
         embed_inline=ctx.embed_images,
+        asset_name_map=ctx.asset_name_map,
     )
     if not result.svg:
         return ""
@@ -507,10 +580,17 @@ def _convert_graphic_fallback(node: ShapeNode, ctx: AssemblyContext,
         if rendered:
             return _wrap_shape_group(rendered, node, ctx, top_level=top_level)
 
-    if uri == "http://schemas.openxmlformats.org/presentationml/2006/ole":
-        rendered = _render_ole_preview(node, ctx)
+    if uri == "http://schemas.openxmlformats.org/presentationml/2006/ole" and ctx.render_graphic_previews:
+        rendered = _render_graphic_preview(node, ctx)
         if rendered:
-            return _wrap_shape_group(rendered, node, ctx, top_level=top_level)
+            labelled = rendered + "\n" + _graphic_preview_label(node, "ole preview")
+            return _wrap_shape_group(labelled, node, ctx, top_level=top_level)
+
+    if ctx.render_graphic_previews:
+        rendered = _render_graphic_preview(node, ctx)
+        if rendered:
+            labelled = rendered + "\n" + _graphic_preview_label(node, f"{uri.rsplit('/', 1)[-1]} preview")
+            return _wrap_shape_group(labelled, node, ctx, top_level=top_level)
 
     label = uri.rsplit("/", 1)[-1]
     placeholder = (
@@ -523,6 +603,16 @@ def _convert_graphic_fallback(node: ShapeNode, ctx: AssemblyContext,
         f"[{_xml_escape(label)}]</text>"
     )
     return _wrap_shape_group(placeholder, node, ctx, top_level=top_level)
+
+
+def _graphic_preview_label(node: ShapeNode, label: str) -> str:
+    return (
+        f'<rect x="{fmt_num(node.xfrm.x)}" y="{fmt_num(node.xfrm.y)}" '
+        f'width="{fmt_num(node.xfrm.w)}" height="22" '
+        f'fill="#FFFFFF" fill-opacity="0.82" stroke="#999999" stroke-width="0.5"/>'
+        f'<text x="{fmt_num(node.xfrm.x + 6)}" y="{fmt_num(node.xfrm.y + 15)}" '
+        f'font-size="11" fill="#666666">[{_xml_escape(label)}]</text>'
+    )
 
 
 def _render_graphic_table(node: ShapeNode, ctx: AssemblyContext,
@@ -545,17 +635,13 @@ def _render_graphic_table(node: ShapeNode, ctx: AssemblyContext,
     return result.svg
 
 
-def _render_ole_preview(node: ShapeNode, ctx: AssemblyContext) -> str:
-    """Render an OLE-embedded object as its baked preview bitmap.
+def _render_graphic_preview(node: ShapeNode, ctx: AssemblyContext) -> str:
+    """Render a graphicFrame's baked fallback preview bitmap when present.
 
-    PowerPoint stores a static raster preview for every embedded OLE object
-    inside ``mc:AlternateContent``. The Fallback branch is required by spec
-    to be a plain ``p:pic`` (sometimes nested inside a stray ``p:oleObj``),
-    so any conformant viewer that can't speak OLE just paints the preview.
-    We do the same: locate that ``p:pic`` and run it through the regular
-    picture pipeline. The user sees what they'd see in PowerPoint without
-    double-clicking the chart, no live OLE editing required (which we
-    couldn't do in SVG anyway).
+    PowerPoint stores a static raster preview for many embedded graphics
+    inside ``mc:AlternateContent``. The Fallback branch is normally a plain
+    ``p:pic`` (sometimes nested), so any conformant viewer that can't speak
+    the richer object paints the preview. We do the same for flat preview SVGs.
 
     Falls back to '' when the deck has no Fallback pic (very old or
     third-party authoring tools sometimes omit it). Caller then emits the
@@ -587,6 +673,7 @@ def _render_ole_preview(node: ShapeNode, ctx: AssemblyContext) -> str:
         pic, inner_xfrm, ctx.slide_part, ctx.pkg,
         media_subdir=ctx.media_subdir,
         embed_inline=ctx.embed_images,
+        asset_name_map=ctx.asset_name_map,
     )
     if not result.svg:
         return ""
@@ -617,6 +704,10 @@ def _emit_background(slide: SlideRef, ctx: AssemblyContext,
             placeholder_hex, _ = resolve_color(color_elem, ctx.palette)
         if bg_pr is None:
             continue
+
+        bg_image = _emit_background_image(bg_pr, part, ctx, w, h)
+        if bg_image:
+            return bg_image
 
         fill = resolve_fill(
             bg_pr, ctx.palette,
@@ -658,6 +749,10 @@ def _emit_part_background(slide: SlideRef, ctx: AssemblyContext,
     if bg_pr is None:
         return ""
 
+    bg_image = _emit_background_image(bg_pr, slide.part, ctx, w, h)
+    if bg_image:
+        return bg_image
+
     fill = resolve_fill(
         bg_pr, ctx.palette,
         id_prefix="bg", id_seq=ctx.grad_seq,
@@ -669,6 +764,32 @@ def _emit_part_background(slide: SlideRef, ctx: AssemblyContext,
     attrs_xml = _attrs_to_xml(fill.attrs)
     return (f'<rect x="0" y="0" width="{fmt_num(w)}" height="{fmt_num(h)}"'
             f"{attrs_xml}/>")
+
+
+def _emit_background_image(
+    bg_pr: ET.Element,
+    source_part: PartRef,
+    ctx: AssemblyContext,
+    w: float,
+    h: float,
+) -> str:
+    """Render a slide/layout/master background image fill as a full-canvas image."""
+    blip_fill = bg_pr.find("a:blipFill", NS)
+    if blip_fill is None:
+        return ""
+
+    result = convert_blip_fill(
+        blip_fill,
+        Xfrm(0.0, 0.0, w, h),
+        source_part,
+        ctx.pkg,
+        media_subdir=ctx.media_subdir,
+        embed_inline=ctx.embed_images,
+        asset_name_map=ctx.asset_name_map,
+    )
+    if result.media:
+        ctx.media.update(result.media)
+    return result.svg
 
 
 def _theme_background_fill(
@@ -729,6 +850,28 @@ def _is_placeholder_node(node: ShapeNode) -> bool:
     if node.kind == GROUP:
         return all(_is_placeholder_node(child) for child in node.children)
     return False
+
+
+def _convert_placeholder_guide(node: ShapeNode, ctx: AssemblyContext,
+                               *, top_level: bool) -> str:
+    """Emit a lightweight visible guide for template placeholder slots."""
+    ph = node.placeholder
+    label_parts = ["ph"]
+    if ph is not None:
+        if ph.type:
+            label_parts.append(ph.type)
+        if ph.idx:
+            label_parts.append(f"idx={ph.idx}")
+    label = " ".join(label_parts)
+    guide = (
+        f'<rect x="{fmt_num(node.xfrm.x)}" y="{fmt_num(node.xfrm.y)}" '
+        f'width="{fmt_num(node.xfrm.w)}" height="{fmt_num(node.xfrm.h)}" '
+        f'fill="#F8FAFC" fill-opacity="0.18" stroke="#94A3B8" '
+        f'stroke-dasharray="6 4" stroke-width="1"/>'
+        f'<text x="{fmt_num(node.xfrm.x + 8)}" y="{fmt_num(node.xfrm.y + 18)}" '
+        f'font-size="12" fill="#64748B">{_xml_escape(label)}</text>'
+    )
+    return _wrap_shape_group(guide, node, ctx, top_level=top_level)
 
 
 # ---------------------------------------------------------------------------

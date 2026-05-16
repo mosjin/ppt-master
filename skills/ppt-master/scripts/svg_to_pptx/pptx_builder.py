@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import mimetypes
+import os
 import re
 import shutil
 import tempfile
-import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any
 
 from pptx import Presentation
 from pptx.util import Emu
@@ -21,7 +24,7 @@ from .pptx_dimensions import (
 )
 from .pptx_media import (
     PNG_RENDERER,
-    get_png_renderer_info, convert_svg_to_png,
+    get_png_renderer_info, convert_svg_to_png, convert_svg_to_png_cached,
 )
 from .pptx_notes import (
     markdown_to_plain_text,
@@ -96,55 +99,194 @@ def _add_default_content_type(content_types: str, extension: str, content_type: 
     return content_types.replace('</Types>', entry + '\n</Types>')
 
 
-def _expand_anim_targets_to_group_children(
-    slide_xml: str,
+_IMAGE_CONTENT_TYPES = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    'bmp': 'image/bmp',
+    'emf': 'image/x-emf',
+    'tif': 'image/tiff',
+    'tiff': 'image/tiff',
+    'wmf': 'image/x-wmf',
+}
+
+
+def _content_type_for_extension(ext: str) -> str:
+    clean = ext.lower().lstrip('.')
+    content_type = _IMAGE_CONTENT_TYPES.get(clean) or mimetypes.guess_type(f'x.{clean}')[0]
+    if not content_type:
+        raise ValueError(f"Unknown media content type for extension: {ext}")
+    return content_type
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _to_float(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number >= 0 else default
+
+
+def _slide_config(animation_config: dict[str, Any] | None, svg_stem: str) -> dict[str, Any]:
+    if not animation_config:
+        return {}
+    slides = _as_dict(animation_config.get('slides'))
+    return _as_dict(slides.get(svg_stem))
+
+
+def _slide_transition_settings(
+    slide_cfg: dict[str, Any],
+    transition: str | None,
+    duration: float,
+    auto_advance: float | None,
+    cli_overrides: dict[str, bool],
+) -> tuple[str | None, float, float | None]:
+    trans_cfg = _as_dict(slide_cfg.get('transition'))
+    effect = transition
+    if not cli_overrides.get('transition') and 'effect' in trans_cfg:
+        cfg_effect = str(trans_cfg.get('effect'))
+        effect = None if cfg_effect == 'none' else cfg_effect
+    if not cli_overrides.get('transition_duration'):
+        duration = _to_float(trans_cfg.get('duration'), duration)
+    if not cli_overrides.get('auto_advance') and 'auto_advance' in trans_cfg:
+        auto_advance = _to_float(trans_cfg.get('auto_advance'), auto_advance or 0)
+    return effect, duration, auto_advance
+
+
+def _slide_animation_settings(
+    slide_cfg: dict[str, Any],
+    animation: str | None,
+    duration: float,
+    stagger: float,
+    trigger: str,
+    cli_overrides: dict[str, bool],
+) -> tuple[str | None, float, float, str]:
+    anim_cfg = _as_dict(slide_cfg.get('animation'))
+    effect = animation
+    if not cli_overrides.get('animation') and 'effect' in anim_cfg:
+        cfg_effect = str(anim_cfg.get('effect'))
+        effect = None if cfg_effect == 'none' else cfg_effect
+    if not cli_overrides.get('animation_duration'):
+        duration = _to_float(anim_cfg.get('duration'), duration)
+    if not cli_overrides.get('animation_stagger'):
+        stagger = _to_float(anim_cfg.get('stagger'), stagger)
+    if not cli_overrides.get('animation_trigger') and anim_cfg.get('trigger'):
+        trigger = str(anim_cfg.get('trigger'))
+    return effect, duration, stagger, trigger
+
+
+def _build_sequence_targets(
     anim_targets: list[tuple[int, str]],
-) -> list[tuple[list[int], str]]:
-    """Expand top-level group animation targets to their concrete child shapes.
+    slide_cfg: dict[str, Any],
+    animation: str,
+    duration: float,
+    stagger: float,
+    mixed_animation_offset: int,
+) -> tuple[list[tuple[int, int, str, float]], int]:
+    groups_cfg = _as_dict(slide_cfg.get('groups'))
+    ordered: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    for idx, (sid, svg_id) in enumerate(anim_targets):
+        group_cfg = _as_dict(groups_cfg.get(svg_id))
+        if str(group_cfg.get('effect', '')).lower() == 'none':
+            continue
+        order_value = group_cfg.get('order')
+        try:
+            order = int(order_value)
+            has_order = 0
+        except (TypeError, ValueError):
+            order = idx
+            has_order = 1
+        group_entry = dict(group_cfg)
+        group_entry['_shape_id'] = sid
+        ordered.append((has_order, order, idx, svg_id, group_entry))
 
-    PowerPoint for Mac may list animations assigned to ``p:grpSp`` in the
-    animation pane but fail to consume slideshow clicks for those group targets.
-    Animating ordinary child shapes in the same click step preserves the visual
-    "one semantic block per click" behavior while avoiding group-target playback
-    quirks.
+    ordered.sort(key=lambda item: (item[0], item[1], item[2]))
+
+    seq_targets: list[tuple[int, int, str, float]] = []
+    for seq_idx, (_has_order, _order, _original_idx, _svg_id, group_cfg) in enumerate(ordered):
+        shape_id = int(group_cfg['_shape_id'])
+        raw_effect = group_cfg.get('effect')
+        if raw_effect in ('mixed', 'random'):
+            effect = pick_animation_effect(str(raw_effect), seq_idx, mixed_animation_offset)
+        else:
+            effect = str(raw_effect or pick_animation_effect(
+                animation, seq_idx, mixed_animation_offset,
+            ))
+        item_duration = _to_float(group_cfg.get('duration'), duration)
+        delay_seconds = _to_float(
+            group_cfg.get('delay'),
+            0 if seq_idx == 0 else stagger,
+        )
+        seq_targets.append((shape_id, int(delay_seconds * 1000), effect, item_duration))
+
+    mixed_count = 0
+    if animation == 'mixed':
+        mixed_count = sum(1 for _target in seq_targets[1:])
+    return seq_targets, mixed_count
+
+
+def _prerender_legacy_pngs(
+    svg_files: list[Path],
+    media_dir: Path,
+    pixel_width: int,
+    pixel_height: int,
+    cache_dir: Path | None,
+    workers: int,
+    verbose: bool,
+) -> dict[int, bool]:
+    """Render every SVG→PNG into media_dir in parallel.
+
+    Returns {1-based slide index: success}. Falls back to sequential when
+    workers<=1 or len(svg_files)<=2.
     """
-    ns = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main'}
-    root = ET.fromstring(slide_xml)
-    expanded: list[tuple[list[int], str]] = []
+    results: dict[int, bool] = {}
+    targets: list[tuple[int, Path, Path]] = [
+        (i, svg, media_dir / f'image{i}.png')
+        for i, svg in enumerate(svg_files, 1)
+    ]
 
-    for target_id, svg_id in anim_targets:
-        if isinstance(target_id, (list, tuple)):
-            expanded.append(([int(v) for v in target_id], svg_id))
-            continue
+    if workers <= 1 or len(targets) <= 2:
+        for i, svg, png in targets:
+            ok = convert_svg_to_png_cached(svg, png, pixel_width, pixel_height, cache_dir)
+            results[i] = ok
+            if verbose:
+                tag = 'cached/ok' if ok else 'failed'
+                print(f"  [PNG {i}/{len(targets)}] {svg.name} - {tag}")
+        return results
 
-        group = None
-        for candidate in root.findall('.//p:grpSp', ns):
-            c_nv_pr = candidate.find('./p:nvGrpSpPr/p:cNvPr', ns)
-            if c_nv_pr is not None and c_nv_pr.get('id') == str(target_id):
-                group = candidate
-                break
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        future_map = {
+            pool.submit(
+                convert_svg_to_png_cached,
+                svg, png, pixel_width, pixel_height, cache_dir,
+            ): (i, svg)
+            for i, svg, png in targets
+        }
+        done = 0
+        for future in as_completed(future_map):
+            i, svg = future_map[future]
+            try:
+                ok = future.result()
+            except Exception as exc:
+                ok = False
+                if verbose:
+                    print(f"  [PNG] {svg.name} - worker error: {exc}")
+            results[i] = ok
+            done += 1
+            if verbose:
+                tag = 'cached/ok' if ok else 'failed'
+                print(f"  [PNG {done}/{len(targets)}] {svg.name} - {tag}")
 
-        if group is None:
-            expanded.append(([target_id], svg_id))
-            continue
-
-        child_ids: list[int] = []
-        for child in list(group):
-            if child.tag == f'{{{ns["p"]}}}sp':
-                c_nv_pr = child.find('./p:nvSpPr/p:cNvPr', ns)
-            elif child.tag == f'{{{ns["p"]}}}pic':
-                c_nv_pr = child.find('./p:nvPicPr/p:cNvPr', ns)
-            else:
-                c_nv_pr = None
-            if c_nv_pr is None:
-                continue
-            child_id = c_nv_pr.get('id')
-            if child_id and child_id.isdigit():
-                child_ids.append(int(child_id))
-
-        expanded.append((child_ids or [target_id], svg_id))
-
-    return expanded
+    return results
 
 
 def create_pptx_with_native_svg(
@@ -163,10 +305,14 @@ def create_pptx_with_native_svg(
     animation_duration: float = 0.4,
     animation_stagger: float = 0.5,
     animation_trigger: str = 'after-previous',
+    animation_config: dict[str, Any] | None = None,
+    animation_cli_overrides: dict[str, bool] | None = None,
     narration_audio: dict[str, Path] | None = None,
     use_narration_timings: bool = False,
     narration_padding: float = 0.5,
     absolute_link_base: Path | None = None,
+    cache_dir: Path | None = None,
+    workers: int | None = None,
 ) -> bool:
     """Create a PPTX file with native SVG.
 
@@ -189,6 +335,8 @@ def create_pptx_with_native_svg(
             trigger mode (seconds). Ignored otherwise.
         animation_trigger: PowerPoint Start mode — ``'after-previous'`` (default),
             ``'on-click'``, or ``'with-previous'``.
+        animation_config: Optional sidecar overrides loaded from animations.json.
+        animation_cli_overrides: Flags indicating explicit CLI overrides.
         narration_audio: Optional dict mapping SVG stem to narration audio file.
         use_narration_timings: Whether to set slide auto-advance from audio duration.
         narration_padding: Extra seconds added after each narration before advancing.
@@ -254,6 +402,8 @@ def create_pptx_with_native_svg(
             print(f"  Speaker notes: Disabled")
         print()
 
+    animation_cli_overrides = animation_cli_overrides or {}
+
     temp_dir = Path(tempfile.mkdtemp())
 
     try:
@@ -277,9 +427,27 @@ def create_pptx_with_native_svg(
         media_dir = extract_dir / 'ppt' / 'media'
         media_dir.mkdir(exist_ok=True)
 
+        prerender_results: dict[int, bool] | None = None
+        if not use_native_shapes and use_compat_mode and PNG_RENDERER is not None:
+            if workers is None:
+                resolved_workers = min(os.cpu_count() or 2, len(svg_files), 8)
+            else:
+                resolved_workers = max(0, workers)
+            if verbose:
+                cache_label = str(cache_dir) if cache_dir else 'disabled'
+                mode = f'parallel x{resolved_workers}' if resolved_workers > 1 else 'sequential'
+                print(f"  Pre-rendering PNGs ({mode}, cache: {cache_label})")
+            prerender_results = _prerender_legacy_pngs(
+                svg_files, media_dir, pixel_width, pixel_height,
+                cache_dir, resolved_workers, verbose,
+            )
+            if verbose:
+                print()
+
         success_count = 0
         has_any_image = False
         media_cache: dict[tuple[str, str], str] = {}
+        image_exts_used: set[str] = set()
         notes_slides_created: set[int] = set()
         narration_slides_created: set[int] = set()
         audio_exts_used: set[str] = set()
@@ -291,10 +459,33 @@ def create_pptx_with_native_svg(
             try:
                 # ---- Native shapes mode ----
                 if use_native_shapes:
+                    slide_cfg = _slide_config(animation_config, svg_path.stem)
                     slide_xml, media_files_dict, rel_entries, anim_targets = (
                         convert_svg_to_slide_shapes(
                             svg_path, slide_num=slide_num, verbose=verbose,
                         )
+                    )
+                    slide_transition, slide_transition_duration, slide_auto_advance = (
+                        _slide_transition_settings(
+                            slide_cfg,
+                            transition,
+                            transition_duration,
+                            auto_advance,
+                            animation_cli_overrides,
+                        )
+                    )
+                    (
+                        slide_animation,
+                        slide_animation_duration,
+                        slide_animation_stagger,
+                        slide_animation_trigger,
+                    ) = _slide_animation_settings(
+                        slide_cfg,
+                        animation,
+                        animation_duration,
+                        animation_stagger,
+                        animation_trigger,
+                        animation_cli_overrides,
                     )
 
                     # Inject SVG hyperlinks as transparent overlay shapes
@@ -340,35 +531,34 @@ def create_pptx_with_native_svg(
                     # to precede <p:timing> inside <p:sld>. Both use the same
                     # </p:sld> string-replace anchor, so transition must be
                     # injected first and timing second.
-                    if transition and ANIMATIONS_AVAILABLE and create_transition_xml:
+                    if slide_transition and ANIMATIONS_AVAILABLE and create_transition_xml:
                         transition_xml = '\n' + create_transition_xml(
-                            effect=transition,
-                            duration=transition_duration,
-                            advance_after=auto_advance,
+                            effect=slide_transition,
+                            duration=slide_transition_duration,
+                            advance_after=slide_auto_advance,
                         )
                         slide_xml = slide_xml.replace(
                             '</p:sld>',
                             transition_xml + '\n</p:sld>',
                         )
 
-                    if (animation and animation != 'none'
+                    if (slide_animation and slide_animation != 'none'
                             and create_sequence_timing_xml
                             and pick_animation_effect
                             and anim_targets):
-                        stagger_ms = int(animation_stagger * 1000)
-                        seq_targets = [
-                            (sid,
-                             0 if idx == 0 else stagger_ms,
-                             pick_animation_effect(
-                                 animation, idx, mixed_animation_offset,
-                             ))
-                            for idx, (sid, _svg_id) in enumerate(anim_targets)
-                        ]
-                        if animation == 'mixed':
-                            mixed_animation_offset += max(0, len(anim_targets) - 1)
+                        seq_targets, mixed_count = _build_sequence_targets(
+                            anim_targets,
+                            slide_cfg,
+                            slide_animation,
+                            slide_animation_duration,
+                            slide_animation_stagger,
+                            mixed_animation_offset,
+                        )
+                        if slide_animation == 'mixed':
+                            mixed_animation_offset += mixed_count
                         timing_xml = '\n' + create_sequence_timing_xml(
-                            seq_targets, duration=animation_duration,
-                            trigger=animation_trigger,
+                            seq_targets, duration=slide_animation_duration,
+                            trigger=slide_animation_trigger,
                         )
                         slide_xml = slide_xml.replace(
                             '</p:sld>',
@@ -389,7 +579,7 @@ def create_pptx_with_native_svg(
                         cached_name = media_cache.get(cache_key)
 
                         if cached_name is None:
-                            cached_name = media_name
+                            cached_name = f'image_{media_hash[:16]}.{ext}'
                             media_cache[cache_key] = cached_name
                             with open(media_dir / cached_name, 'wb') as f:
                                 f.write(media_data)
@@ -429,13 +619,24 @@ def create_pptx_with_native_svg(
                         f.write(rels_xml)
 
                     # Track image formats for Content_Types
-                    for media_name in media_files_dict:
+                    for media_name in media_name_map.values():
                         ext = media_name.rsplit('.', 1)[-1].lower()
-                        if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp'):
-                            has_any_image = True
+                        _content_type_for_extension(ext)
+                        image_exts_used.add(ext)
+                        has_any_image = True
 
                 # ---- Legacy SVG embedding mode ----
                 else:
+                    slide_cfg = _slide_config(animation_config, svg_path.stem)
+                    slide_transition, slide_transition_duration, slide_auto_advance = (
+                        _slide_transition_settings(
+                            slide_cfg,
+                            transition,
+                            transition_duration,
+                            auto_advance,
+                            animation_cli_overrides,
+                        )
+                    )
                     svg_filename = f'image{i}.svg'
                     png_filename = f'image{i}.png'
                     png_rid = 'rId2'
@@ -445,14 +646,18 @@ def create_pptx_with_native_svg(
 
                     slide_has_png = False
                     if use_compat_mode:
-                        png_path = media_dir / png_filename
-                        png_success = convert_svg_to_png(
-                            svg_path, png_path,
-                            width=pixel_width, height=pixel_height,
-                        )
+                        if prerender_results is not None:
+                            png_success = prerender_results.get(i, False)
+                        else:
+                            png_path = media_dir / png_filename
+                            png_success = convert_svg_to_png(
+                                svg_path, png_path,
+                                width=pixel_width, height=pixel_height,
+                            )
                         if png_success:
                             slide_has_png = True
                             has_any_image = True
+                            image_exts_used.add('png')
                         else:
                             if verbose:
                                 print(f"  [{i}/{len(svg_files)}] {svg_path.name} - PNG generation failed, using pure SVG")
@@ -476,9 +681,9 @@ def create_pptx_with_native_svg(
                         slide_num,
                         png_rid=png_rid, svg_rid=svg_rid,
                         width_emu=width_emu, height_emu=height_emu,
-                        transition=transition,
-                        transition_duration=transition_duration,
-                        auto_advance=auto_advance,
+                        transition=slide_transition,
+                        transition_duration=slide_transition_duration,
+                        auto_advance=slide_auto_advance,
                         use_compat_mode=(use_compat_mode and slide_has_png),
                         link_regions=link_regions or None,
                     )
@@ -543,6 +748,7 @@ def create_pptx_with_native_svg(
                     if not poster_path.exists():
                         poster_path.write_bytes(TRANSPARENT_PNG_BYTES)
                     has_any_image = True
+                    image_exts_used.add('png')
 
                     media_rid = _append_relationship(
                         rels_path,
@@ -573,13 +779,16 @@ def create_pptx_with_native_svg(
 
                     if use_narration_timings:
                         duration = probe_audio_duration(audio_path)
-                        if duration:
-                            slide_xml = apply_recorded_timing(
-                                slide_xml,
-                                advance_after=duration + narration_padding,
-                                transition_duration=transition_duration,
-                                transition_effect=transition or 'fade',
+                        if duration is None:
+                            raise RuntimeError(
+                                f"Unable to read narration duration with ffprobe: {audio_path}"
                             )
+                        slide_xml = apply_recorded_timing(
+                            slide_xml,
+                            advance_after=duration + narration_padding,
+                            transition_duration=slide_transition_duration,
+                            transition_effect=slide_transition or 'fade',
+                        )
                     slide_xml_path.write_text(slide_xml, encoding='utf-8')
                     narration_slides_created.add(slide_num)
 
@@ -600,6 +809,8 @@ def create_pptx_with_native_svg(
             except Exception as e:
                 if verbose:
                     print(f"  [{i}/{len(svg_files)}] {svg_path.name} - Error: {e}")
+                if use_native_shapes:
+                    raise
 
         # Update [Content_Types].xml
         content_types_path = extract_dir / '[Content_Types].xml'
@@ -610,12 +821,11 @@ def create_pptx_with_native_svg(
         if not use_native_shapes:
             if 'Extension="svg"' not in content_types:
                 types_to_add.append('  <Default Extension="svg" ContentType="image/svg+xml"/>')
-        if has_any_image and 'Extension="png"' not in content_types:
-            types_to_add.append('  <Default Extension="png" ContentType="image/png"/>')
-        if use_native_shapes and 'Extension="jpg"' not in content_types:
-            types_to_add.append('  <Default Extension="jpg" ContentType="image/jpeg"/>')
-        if use_native_shapes and 'Extension="jpeg"' not in content_types:
-            types_to_add.append('  <Default Extension="jpeg" ContentType="image/jpeg"/>')
+        for ext in sorted(image_exts_used):
+            if f'Extension="{ext}"' not in content_types:
+                types_to_add.append(
+                    f'  <Default Extension="{ext}" ContentType="{_content_type_for_extension(ext)}"/>'
+                )
 
         if types_to_add:
             content_types = content_types.replace(
@@ -646,12 +856,15 @@ def create_pptx_with_native_svg(
             with open(content_types_path, 'w', encoding='utf-8') as f:
                 f.write(content_types)
 
-        # Repackage PPTX
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Repackage PPTX to a temporary file first. The public output path is
+        # replaced only after every slide and relationship has succeeded.
+        temp_output_path = temp_dir / 'result.pptx'
+        with zipfile.ZipFile(temp_output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for file_path in extract_dir.rglob('*'):
                 if file_path.is_file():
                     arcname = file_path.relative_to(extract_dir)
                     zf.write(file_path, arcname)
+        shutil.move(str(temp_output_path), str(output_path))
 
         if verbose:
             print()

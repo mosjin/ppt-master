@@ -1,12 +1,132 @@
 {
   "version": 1,
-  "updated": "2026-04-26",
+  "updated": "2026-05-15",
   "stats": {
-    "examples": 22,
-    "pages": 309,
+    "examples": 23,
+    "pages": 329,
     "templates": 20
   },
   "projects": [
+    {
+      "id": "ppt169_image_text_showcase",
+      "title": "Image-Text Showcase",
+      "description": "20种图文组合范式展示 — 每页不同 rendering × palette × 布局",
+      "icon": "🎨",
+      "color": "#7C6FF7",
+      "style": "creative",
+      "styleName": "Editorial Showcase",
+      "desc": "20 image-text composition patterns — full-bleed hero, Z-pattern, diagonal split, hexagonal cutout, montage with overlay text, and more. Each page demonstrates a distinct rendering × palette combination.",
+      "tags": [
+        "Image-Text",
+        "Layout Patterns",
+        "Visual Reference"
+      ],
+      "isNew": true,
+      "folder": "ppt169_image_text_showcase/svg_final",
+      "cover": "01_封面.svg",
+      "slides": [
+        {
+          "file": "01_封面.svg",
+          "title": "封面",
+          "desc": "封面"
+        },
+        {
+          "file": "02_目录.svg",
+          "title": "目录",
+          "desc": "目录"
+        },
+        {
+          "file": "03_左图右文.svg",
+          "title": "左图右文",
+          "desc": "左图右文"
+        },
+        {
+          "file": "04_右图出血.svg",
+          "title": "右图出血",
+          "desc": "右图出血"
+        },
+        {
+          "file": "05_顶图三栏.svg",
+          "title": "顶图三栏",
+          "desc": "顶图三栏"
+        },
+        {
+          "file": "06_底图浮文.svg",
+          "title": "底图浮文",
+          "desc": "底图浮文"
+        },
+        {
+          "file": "07_Z型蛇形.svg",
+          "title": "Z型蛇形",
+          "desc": "Z型蛇形"
+        },
+        {
+          "file": "08_九宫格混排.svg",
+          "title": "九宫格混排",
+          "desc": "九宫格混排"
+        },
+        {
+          "file": "09_圆形放射.svg",
+          "title": "圆形放射",
+          "desc": "圆形放射"
+        },
+        {
+          "file": "10_底纹密铺.svg",
+          "title": "底纹密铺",
+          "desc": "底纹密铺"
+        },
+        {
+          "file": "11_剪纸分层.svg",
+          "title": "剪纸分层",
+          "desc": "剪纸分层"
+        },
+        {
+          "file": "12_竖版杂志.svg",
+          "title": "竖版杂志",
+          "desc": "竖版杂志"
+        },
+        {
+          "file": "13_对角线分割.svg",
+          "title": "对角线分割",
+          "desc": "对角线分割"
+        },
+        {
+          "file": "14_褪色底图大字.svg",
+          "title": "褪色底图大字",
+          "desc": "褪色底图大字"
+        },
+        {
+          "file": "15_上文下图.svg",
+          "title": "上文下图",
+          "desc": "上文下图"
+        },
+        {
+          "file": "16_中心放射标注.svg",
+          "title": "中心放射标注",
+          "desc": "中心放射标注"
+        },
+        {
+          "file": "17_横条贯穿.svg",
+          "title": "横条贯穿",
+          "desc": "横条贯穿"
+        },
+        {
+          "file": "18_多边形填缝.svg",
+          "title": "多边形填缝",
+          "desc": "多边形填缝"
+        },
+        {
+          "file": "19_蒙太奇拼贴.svg",
+          "title": "蒙太奇拼贴",
+          "desc": "蒙太奇拼贴"
+        },
+        {
+          "file": "20_黑板收场.svg",
+          "title": "黑板收场",
+          "desc": "黑板收场"
+        }
+      ]
+    },
     {
       "id": "ppt169_building_effective_agents",
       "title": "Building Effective Agents",
@@ -21,7 +141,7 @@
         "AI/ML",
         "Anthropic"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_building_effective_agents/svg_final",
       "cover": "01_cover.svg",
       "slides": [
@@ -101,7 +221,7 @@
         "Fashion",
         "杂志风"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_fashion_weekly_digest/svg_final",
       "cover": "01_封面.svg",
       "slides": [
@@ -201,7 +321,7 @@
         "杂志风",
         "CMT"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_home_design_trends_2026/svg_final",
       "cover": "01_封面.svg",
       "slides": [
@@ -281,7 +401,7 @@
         "Loyalty",
         "Automotive"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_kimsoong_loyalty_programme/svg_final",
       "cover": "slide_01_cover.svg",
       "slides": [
@@ -351,7 +471,7 @@
         "人文",
         "深色主题"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_lin_huiyin_architect/svg_final",
       "cover": "01_封面.svg",
       "slides": [
@@ -421,7 +541,7 @@
         "展陈图录",
         "修订版"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_lin_huiyin_architect_revised/svg_final",
       "cover": "01_封面.svg",
       "slides": [
@@ -486,7 +606,7 @@
         "植物染",
         "东方美学"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_liziqi_plant_dye_colors/svg_final",
       "cover": "01_cover.svg",
       "slides": [
@@ -746,7 +866,7 @@
         "政务财政",
         "数据驱动"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_顶级咨询风_重庆市区域报告_ppt169_20251213/svg_final",
       "cover": "P01_封面.svg",
       "slides": [
@@ -1506,7 +1626,7 @@
         "AI Safety",
         "Anthropic"
       ],
-      "isNew": true,
+      "isNew": false,
       "folder": "ppt169_general_dark_tech_claude_code_auto_mode/svg_final",
       "cover": "01_cover.svg",
       "slides": [

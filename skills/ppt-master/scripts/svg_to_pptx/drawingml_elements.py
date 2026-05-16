@@ -14,6 +14,7 @@ from .drawingml_utils import (
     SVG_NS, XLINK_NS, ANGLE_UNIT, FONT_PX_TO_HUNDREDTHS_PT, DASH_PRESETS,
     px_to_emu, _f, _get_attr,
     ctx_x, ctx_y, ctx_w, ctx_h,
+    rect_to_dml_xfrm,
     parse_hex_color, resolve_url_id, get_effective_filter_id,
     parse_font_family, is_cjk_char, estimate_text_width,
     _xml_escape,
@@ -64,6 +65,30 @@ def _wrap_shape(
 # fraction of the radius. Standard "magic number" for a 90° arc (max error
 # ~0.027% of the radius).
 _BEZIER_QUARTER_K = 0.5522847498
+
+
+def _build_preset_geom_from_meta(elem: ET.Element) -> str | None:
+    """Build native DrawingML preset geometry from SVG metadata."""
+    prst = elem.get('data-pptx-prst')
+    if prst != 'round2SameRect':
+        return None
+
+    def _adj_attr(name: str, default: int) -> int:
+        try:
+            return int(float(elem.get(name, str(default))))
+        except ValueError:
+            return default
+
+    adj1 = max(0, min(100000, _adj_attr('data-pptx-adj1', 16667)))
+    adj2 = max(0, min(100000, _adj_attr('data-pptx-adj2', 0)))
+    return (
+        '<a:prstGeom prst="round2SameRect">'
+        '<a:avLst>'
+        f'<a:gd name="adj1" fmla="val {adj1}"/>'
+        f'<a:gd name="adj2" fmla="val {adj2}"/>'
+        '</a:avLst>'
+        '</a:prstGeom>'
+    )
 
 
 def _build_round_rect_custgeom(w: float, h: float, rx: float, ry: float) -> str:
@@ -616,7 +641,9 @@ def convert_path(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     w_emu = px_to_emu(width)
     h_emu = px_to_emu(height)
 
-    geom = f'''<a:custGeom>
+    geom = _build_preset_geom_from_meta(elem)
+    if geom is None:
+        geom = f'''<a:custGeom>
 <a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/>
 <a:rect l="l" t="t" r="r" b="b"/>
 <a:pathLst><a:path w="{w_emu}" h="{h_emu}">
@@ -810,6 +837,15 @@ def _override_run_attrs(
         c = parse_hex_color(child_fill)
         if c:
             run_attrs['fill'] = c
+    if tspan.get('stroke'):
+        run_attrs['stroke_raw'] = tspan.get('stroke')
+    if tspan.get('stroke-width'):
+        run_attrs['stroke_width'] = _f(tspan.get('stroke-width'), run_attrs.get('stroke_width', 1.0))
+    if tspan.get('stroke-opacity'):
+        try:
+            run_attrs['stroke_opacity'] = float(tspan.get('stroke-opacity', '1'))
+        except ValueError:
+            pass
     if tspan.get('font-size'):
         run_attrs['font_size'] = _f(tspan.get('font-size'), run_attrs['font_size'])
     if tspan.get('font-family'):
@@ -895,6 +931,49 @@ def _build_text_runs(
     return runs
 
 
+def _build_text_fill_xml(
+    fill: str,
+    fill_raw: str,
+    opacity: float | None,
+    ctx: ConvertContext | None,
+) -> str:
+    """Build DrawingML fill XML for a text run."""
+    if fill_raw == 'none':
+        return '<a:noFill/>'
+
+    grad_id = resolve_url_id(fill_raw)
+    if grad_id and ctx and grad_id in ctx.defs:
+        return build_gradient_fill(ctx.defs[grad_id], opacity)
+
+    alpha_xml = ''
+    if opacity is not None and opacity < 1.0:
+        alpha_xml = f'<a:alphaMod val="{int(opacity * 100000)}"/>'
+    return f'<a:solidFill><a:srgbClr val="{fill}">{alpha_xml}</a:srgbClr></a:solidFill>'
+
+
+def _build_text_outline_xml(run: dict[str, Any]) -> str:
+    """Build DrawingML outline XML for a text run from SVG stroke attributes."""
+    stroke_raw = run.get('stroke_raw')
+    if not stroke_raw or stroke_raw == 'none':
+        return ''
+
+    color = parse_hex_color(stroke_raw)
+    if not color:
+        return ''
+
+    stroke_width = _f(str(run.get('stroke_width', 1.0)), 1.0)
+    stroke_opacity = run.get('stroke_opacity')
+    alpha_xml = ''
+    if stroke_opacity is not None and stroke_opacity < 1.0:
+        alpha_xml = f'<a:alphaMod val="{int(stroke_opacity * 100000)}"/>'
+
+    return (
+        f'<a:ln w="{px_to_emu(stroke_width)}">'
+        f'<a:solidFill><a:srgbClr val="{color}">{alpha_xml}</a:srgbClr></a:solidFill>'
+        '</a:ln>'
+    )
+
+
 def _build_run_xml(
     run: dict[str, Any],
     default_fonts: dict[str, str],
@@ -921,20 +1000,14 @@ def _build_run_xml(
 
     fonts = parse_font_family(ff) if ff else default_fonts
 
-    # Build fill XML - gradient or solid
-    grad_id = resolve_url_id(fill_raw)
-    if grad_id and ctx and grad_id in ctx.defs:
-        fill_xml = build_gradient_fill(ctx.defs[grad_id], opacity)
-    else:
-        alpha_xml = ''
-        if opacity is not None and opacity < 1.0:
-            alpha_xml = f'<a:alpha val="{int(opacity * 100000)}"/>'
-        fill_xml = f'<a:solidFill><a:srgbClr val="{fill}">{alpha_xml}</a:srgbClr></a:solidFill>'
+    fill_xml = _build_text_fill_xml(fill, fill_raw, opacity, ctx)
+    outline_xml = _build_text_outline_xml(run)
 
     space_attr = ' xml:space="preserve"' if text != text.strip() or '  ' in text else ''
 
     return f'''<a:r>
 <a:rPr lang="zh-CN" sz="{sz}"{b_attr}{i_attr}{u_attr}{strike_attr} dirty="0">
+{outline_xml}
 {fill_xml}
 {effect_xml}
 <a:latin typeface="{_xml_escape(fonts['latin'])}"/>
@@ -956,6 +1029,9 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     fill_raw = _get_attr(elem, 'fill', ctx) or '#000000'
     fill_color = parse_hex_color(fill_raw) or '000000'
     opacity = get_fill_opacity(elem, ctx)
+    stroke_raw = _get_attr(elem, 'stroke', ctx) or ''
+    stroke_width = _f(_get_attr(elem, 'stroke-width', ctx), 1.0)
+    stroke_opacity = get_stroke_opacity(elem, ctx)
     font_style = _get_attr(elem, 'font-style', ctx) or ''
     text_decoration = _get_attr(elem, 'text-decoration', ctx) or ''
 
@@ -970,6 +1046,9 @@ def convert_text(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
         'font_style': font_style,
         'text_decoration': text_decoration,
         'opacity': opacity,
+        'stroke_raw': stroke_raw,
+        'stroke_width': stroke_width,
+        'stroke_opacity': stroke_opacity,
     }
     runs = _build_text_runs(elem, parent_attrs)
 
@@ -1260,6 +1339,30 @@ def _resolve_clip_geometry(
 # image
 # ---------------------------------------------------------------------------
 
+def _picture_xfrm_from_rect(
+    ctx: ConvertContext,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> tuple[str, int, int, int, int, tuple[int, int, int, int]]:
+    """Build DrawingML xfrm data for a picture rectangle.
+
+    Coordinates ``x``, ``y``, ``w``, ``h`` MUST already be in ctx-resolved
+    space (i.e. callers have applied ``ctx_x`` / ``ctx_w`` upstream). When
+    ``ctx.use_transform_matrix`` is set, raw SVG-space coordinates are
+    expected and the matrix path applies the transform itself.
+    """
+    if ctx.use_transform_matrix:
+        return rect_to_dml_xfrm(x, y, w, h, ctx.transform_matrix)
+
+    off_x = px_to_emu(x)
+    off_y = px_to_emu(y)
+    ext_cx = px_to_emu(w)
+    ext_cy = px_to_emu(h)
+    return '', off_x, off_y, ext_cx, ext_cy, (off_x, off_y, off_x + ext_cx, off_y + ext_cy)
+
+
 def _read_image_size(data: bytes) -> tuple[int | None, int | None]:
     """Read intrinsic image dimensions (width, height) from raw bytes.
 
@@ -1430,20 +1533,28 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
     raw_w = _f(elem.get('width'))
     raw_h = _f(elem.get('height'))
 
-    x = ctx_x(raw_x, ctx)
-    y = ctx_y(raw_y, ctx)
-    w = ctx_w(raw_w, ctx)
-    h = ctx_h(raw_h, ctx)
+    if ctx.use_transform_matrix:
+        x = raw_x
+        y = raw_y
+        w = raw_w
+        h = raw_h
+    else:
+        x = ctx_x(raw_x, ctx)
+        y = ctx_y(raw_y, ctx)
+        w = ctx_w(raw_w, ctx)
+        h = ctx_h(raw_h, ctx)
 
     if w <= 0 or h <= 0:
         return None
 
     # Extract image data
     if href.startswith('data:'):
-        match = re.match(r'data:image/(\w+);base64,(.+)', href, re.DOTALL)
+        match = re.match(r'data:image/([A-Za-z0-9.+-]+);base64,(.+)', href, re.DOTALL)
         if not match:
             return None
         img_format = match.group(1).lower()
+        if img_format == 'svg+xml':
+            img_format = 'svg'
         if img_format == 'jpeg':
             img_format = 'jpg'
         img_data = base64.b64decode(match.group(2))
@@ -1454,8 +1565,7 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
         if not img_path.exists():
             img_path = ctx.svg_dir.parent / href
         if not img_path.exists():
-            print(f'  Warning: External image not found: {href}')
-            return None
+            raise FileNotFoundError(f'External image not found: {href}')
         img_format = img_path.suffix.lstrip('.').lower()
         if img_format == 'jpeg':
             img_format = 'jpg'
@@ -1474,7 +1584,7 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 
     rot = 0
     transform = elem.get('transform')
-    if transform:
+    if transform and not ctx.use_transform_matrix:
         r_match = re.search(r'rotate\(\s*([-\d.]+)', transform)
         if r_match:
             rot = int(float(r_match.group(1)) * ANGLE_UNIT)
@@ -1491,23 +1601,25 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 
     # Resolve preserveAspectRatio="<align> meet" by shrinking the picture
     # frame to match the image's aspect ratio. Skipped when a real clip-path
-    # is in effect: clip geometry is computed against the original-box
-    # coordinate space and would no longer line up after a frame shift.
-    has_clip = bool(elem.get('clip-path')) and elem.get('clip-path') != 'none'
-    meet_fit = None if has_clip else _resolve_image_meet_fit(elem, img_data, w, h)
+    # produces non-trivial geometry: such clip rectangles are defined against
+    # the original box and would no longer line up after a frame shift.
+    # A clip-path that resolves back to the default rect geometry (e.g. plain
+    # <rect> without rx/ry) is a no-op and must not block meet adjustment.
+    clip_is_noop = clip_geom == '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+    meet_fit = None if not clip_is_noop else _resolve_image_meet_fit(elem, img_data, w, h)
 
     shape_id = ctx.next_id()
     if meet_fit is not None:
         dx, dy, fit_w, fit_h = meet_fit
-        off_x = px_to_emu(x + dx)
-        off_y = px_to_emu(y + dy)
-        ext_cx = px_to_emu(fit_w)
-        ext_cy = px_to_emu(fit_h)
+        xfrm_attr, off_x, off_y, ext_cx, ext_cy, bounds_emu = _picture_xfrm_from_rect(
+            ctx, x + dx, y + dy, fit_w, fit_h,
+        )
     else:
-        off_x = px_to_emu(x)
-        off_y = px_to_emu(y)
-        ext_cx = px_to_emu(w)
-        ext_cy = px_to_emu(h)
+        xfrm_attr, off_x, off_y, ext_cx, ext_cy, bounds_emu = _picture_xfrm_from_rect(
+            ctx, x, y, w, h,
+        )
+    if rot_attr:
+        xfrm_attr += rot_attr
 
     return ShapeResult(xml=f'''<p:pic>
 <p:nvPicPr>
@@ -1520,11 +1632,11 @@ def convert_image(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
 {src_rect_xml}<a:stretch><a:fillRect/></a:stretch>
 </p:blipFill>
 <p:spPr>
-<a:xfrm{rot_attr}><a:off x="{off_x}" y="{off_y}"/>
+<a:xfrm{xfrm_attr}><a:off x="{off_x}" y="{off_y}"/>
 <a:ext cx="{ext_cx}" cy="{ext_cy}"/></a:xfrm>
 {clip_geom}
 </p:spPr>
-</p:pic>''', bounds_emu=(off_x, off_y, off_x + ext_cx, off_y + ext_cy))
+</p:pic>''', bounds_emu=bounds_emu)
 
 
 # ---------------------------------------------------------------------------
@@ -1573,3 +1685,133 @@ def convert_ellipse(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None
         ),
         bounds_emu=(off_x, off_y, off_x + ext_cx, off_y + ext_cy),
     )
+
+
+# ---------------------------------------------------------------------------
+# nested <svg> sprite (template-import round-trip)
+# ---------------------------------------------------------------------------
+
+# Inverse of pptx_to_svg/pic_to_svg.py:101-113 — that path writes a cropped
+# DrawingML picture as an outer <svg viewBox> wrapping a unit-rectangle <image>.
+# Without this converter, every cropped picture in a template-import SVG is
+# silently dropped on re-export.
+
+def convert_nested_svg(elem: ET.Element, ctx: ConvertContext) -> ShapeResult | None:
+    """Convert a nested <svg> sprite-crop wrapper to a DrawingML picture.
+
+    Pattern produced by pptx_to_svg::
+
+        <svg x="10" y="20" width="200" height="300" viewBox="0.5 0.3 0.5 0.7">
+          <image href="..." x="0" y="0" width="1" height="1" preserveAspectRatio="none"/>
+        </svg>
+
+    The viewBox crops the unit-rectangle inner image; that crop is mapped to a
+    DrawingML <a:srcRect> so PowerPoint can re-crop / "Reset Picture".
+    """
+    image_elem = elem.find(f'{{{SVG_NS}}}image')
+    if image_elem is None:
+        image_elem = elem.find('image')
+    if image_elem is None:
+        return None
+
+    href = image_elem.get('href') or image_elem.get(f'{{{XLINK_NS}}}href')
+    if not href:
+        return None
+
+    svg_x = _f(elem.get('x'))
+    svg_y = _f(elem.get('y'))
+    svg_w = _f(elem.get('width'))
+    svg_h = _f(elem.get('height'))
+    if svg_w <= 0 or svg_h <= 0:
+        return None
+
+    if ctx.use_transform_matrix:
+        x = svg_x
+        y = svg_y
+        w = svg_w
+        h = svg_h
+    else:
+        x = ctx_x(svg_x, ctx)
+        y = ctx_y(svg_y, ctx)
+        w = ctx_w(svg_w, ctx)
+        h = ctx_h(svg_h, ctx)
+
+    src_rect_xml = ''
+    view_box = elem.get('viewBox', '')
+    if view_box:
+        parts = view_box.strip().split()
+        if len(parts) == 4:
+            vb_x, vb_y, vb_w, vb_h = (float(p) for p in parts)
+            l = max(0, min(int(round(vb_x * 100000)), 100000))
+            t = max(0, min(int(round(vb_y * 100000)), 100000))
+            r = max(0, min(int(round((1.0 - vb_x - vb_w) * 100000)), 100000))
+            b = max(0, min(int(round((1.0 - vb_y - vb_h) * 100000)), 100000))
+            if l or t or r or b:
+                src_rect_xml = f'<a:srcRect l="{l}" t="{t}" r="{r}" b="{b}"/>'
+
+    if href.startswith('data:'):
+        match = re.match(r'data:image/([A-Za-z0-9.+-]+);base64,(.+)', href, re.DOTALL)
+        if not match:
+            return None
+        img_format = match.group(1).lower()
+        if img_format == 'svg+xml':
+            img_format = 'svg'
+        if img_format == 'jpeg':
+            img_format = 'jpg'
+        img_data = base64.b64decode(match.group(2))
+    else:
+        if ctx.svg_dir is None:
+            return None
+        img_path = ctx.svg_dir / href
+        if not img_path.exists():
+            img_path = ctx.svg_dir.parent / href
+        if not img_path.exists():
+            raise FileNotFoundError(f'External image not found: {href}')
+        img_format = img_path.suffix.lstrip('.').lower()
+        if img_format == 'jpeg':
+            img_format = 'jpg'
+        img_data = img_path.read_bytes()
+
+    img_idx = len(ctx.media_files) + 1
+    img_filename = f's{ctx.slide_num}_img{img_idx}.{img_format}'
+    ctx.media_files[img_filename] = img_data
+
+    r_id = ctx.next_rel_id()
+    ctx.rel_entries.append({
+        'id': r_id,
+        'type': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',
+        'target': f'../media/{img_filename}',
+    })
+
+    rot = 0
+    transform = elem.get('transform')
+    if transform and not ctx.use_transform_matrix:
+        r_match = re.search(r'rotate\(\s*([-\d.]+)', transform)
+        if r_match:
+            rot = int(float(r_match.group(1)) * ANGLE_UNIT)
+    rot_attr = f' rot="{rot}"' if rot else ''
+
+    shape_id = ctx.next_id()
+    xfrm_attr, off_x, off_y, ext_cx, ext_cy, bounds_emu = _picture_xfrm_from_rect(
+        ctx, x, y, w, h,
+    )
+    if rot_attr:
+        xfrm_attr += rot_attr
+    clip_geom = _resolve_clip_geometry(elem, ctx, svg_x, svg_y, svg_w, svg_h)
+
+    return ShapeResult(xml=f'''<p:pic>
+<p:nvPicPr>
+<p:cNvPr id="{shape_id}" name="Image {shape_id}"/>
+<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>
+<p:nvPr/>
+</p:nvPicPr>
+<p:blipFill>
+<a:blip r:embed="{r_id}"/>
+{src_rect_xml}<a:stretch><a:fillRect/></a:stretch>
+</p:blipFill>
+<p:spPr>
+<a:xfrm{xfrm_attr}><a:off x="{off_x}" y="{off_y}"/>
+<a:ext cx="{ext_cx}" cy="{ext_cy}"/></a:xfrm>
+{clip_geom}
+</p:spPr>
+</p:pic>''', bounds_emu=bounds_emu)
