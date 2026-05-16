@@ -2,7 +2,7 @@
 
 # PPT Master — AI generates natively editable PPTX from any document
 
-[![Version](https://img.shields.io/badge/version-v2.6.0-blue.svg)](https://github.com/hugohe3/ppt-master/releases)
+[![Version](https://img.shields.io/badge/version-v2.7.3-blue.svg)](https://github.com/mosjin/ppt-master/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub stars](https://img.shields.io/github/stars/hugohe3/ppt-master.svg)](https://github.com/hugohe3/ppt-master/stargazers)
 [![AtomGit stars](https://atomgit.com/hugohe3/ppt-master/star/badge.svg)](https://atomgit.com/hugohe3/ppt-master)
@@ -170,54 +170,83 @@ PPT Master runs in **any tool with agent capability** — read/write files, exec
 
 ### 3. Set Up
 
-**Option A — Download ZIP** (no Git required): click **Code → Download ZIP** on the [GitHub page](https://github.com/mosjin/ppt-master), then unzip.
+#### ⭐ Recommended — Claude Code plugin (one command)
 
-**Option B — Git clone** (requires [Git](https://git-scm.com/downloads) installed):
+```bash
+claude plugin add github:mosjin/ppt-master
+```
+
+That's it. Skill registers automatically and `/ppt-master:ppt-master` becomes available immediately. Auto-updates work via `claude plugin update ppt-master`.
+
+> Inside an active Claude Code session you can also do it interactively:
+> ```
+> /plugin marketplace add mosjin/ppt-master
+> /plugin install ppt-master@ppt-master
+> /reload-plugin ppt-master    # picks up updates after git pull
+> ```
+
+After install, fetch Python deps **once** from the installed location:
+
+```bash
+# Default install path (Claude Code on macOS / Linux / Windows-WSL)
+pip install -r ~/.claude/plugins/ppt-master/requirements.txt
+
+# Native Windows
+pip install -r %USERPROFILE%\.claude\plugins\ppt-master\requirements.txt
+```
+
+#### Option B — Cross-agent CLI via `npx skills`
+
+Use this when the host is Cursor, Codex, or any agent that supports the cross-agent skill protocol:
+
+```bash
+npx skills add mosjin/ppt-master
+pip install -r "$(npx skills path mosjin/ppt-master)/requirements.txt"
+```
+
+#### Option C — Gemini CLI
+
+Requires [Gemini CLI](https://github.com/google-gemini/gemini-cli):
+
+```bash
+# HTTPS (no SSH key required — verified working)
+gemini skills install https://github.com/mosjin/ppt-master.git --consent --scope user
+pip install -r "$(gemini skills path mosjin/ppt-master)/requirements.txt"
+```
+
+#### Option D — Manual git clone (advanced / dev workflow)
+
+Pick this only when you want to hack on the skill source itself.
 
 ```bash
 git clone https://github.com/mosjin/ppt-master.git
 cd ppt-master
-```
-
-Then install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
-To update later (Option A / B): `python3 skills/ppt-master/scripts/update_repo.py`
+To update later: `python3 skills/ppt-master/scripts/update_repo.py` (or `git pull`).
 
-> **Option C — Skill marketplace** (Claude Code / cross-agent CLI):
->
-> ```bash
-> # Claude Code plugin marketplace
-> claude plugin add github:mosjin/ppt-master
->
-> # Cross-agent CLI (Claude Code, Cursor, Codex, etc.)
-> npx skills add mosjin/ppt-master
->
-> # Or inside Claude Code
-> /plugin marketplace add mosjin/ppt-master
-> /plugin install ppt-master@ppt-master
-> ```
->
-> Both install paths above only fetch the skill files (not the full repo); you still need to `pip install -r requirements.txt` from the installed location for the post-processing scripts to run.
+#### Option E — Download ZIP (no Git)
 
-> **Option D — Gemini CLI** (requires [Gemini CLI](https://github.com/google-gemini/gemini-cli)):
->
-> ```bash
-> # Recommended: HTTPS (no SSH key required — verified working)
-> gemini skills install https://github.com/mosjin/ppt-master.git --consent --scope user
->
-> # Alternative: SSH (requires GitHub SSH key configured)
-> # gemini skills install git@github.com:mosjin/ppt-master.git --consent --scope user
-> ```
->
-> Then install dependencies from the installed skill directory:
->
-> ```bash
-> pip install -r "$(gemini skills path mosjin/ppt-master)/requirements.txt"
-> ```
+Click **Code → Download ZIP** on the [GitHub page](https://github.com/mosjin/ppt-master), unzip, then `pip install -r requirements.txt` from the extracted folder. Manual update only — re-download to refresh.
+
+#### Verify install
+
+```bash
+# Any install path
+python -c "from svg_to_pptx.drawingml_utils import parse_hex_color; print(parse_hex_color('white'))"
+# Expect: FFFFFF   (v2.7.3+ — handles CSS named colors; earlier prints None and PPTs render black)
+```
+
+If you see `None`, you're on an older release — update via your install path:
+
+| Install path | Update command |
+|---|---|
+| Claude Code plugin | `claude plugin update ppt-master` (or `git -C ~/.claude/plugins/ppt-master pull`) |
+| `npx skills` | `npx skills update mosjin/ppt-master` |
+| Gemini CLI | `gemini skills update mosjin/ppt-master` |
+| Manual git clone | `python3 skills/ppt-master/scripts/update_repo.py` or `git pull` |
+| ZIP download | Re-download from GitHub Releases |
 
 ### 4. Create
 
