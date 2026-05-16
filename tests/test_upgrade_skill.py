@@ -54,6 +54,28 @@ class TestUpgradeSubSkill(unittest.TestCase):
         # ppt-master has python deps — must remind user
         self.assertRegex(self.content, r"pip\s+install|requirements\.txt")
 
+    def test_path_priority_targets_marketplaces_dir(self) -> None:
+        # Real Claude Code marketplace installs put the git checkout at
+        # ~/.claude/plugins/marketplaces/<name>/, NOT ~/.claude/plugins/<name>/.
+        # `git pull` only works on the marketplaces dir.
+        self.assertRegex(
+            self.content,
+            r"plugins/marketplaces/ppt-master",
+            "path priority must point to `~/.claude/plugins/marketplaces/ppt-master/` "
+            "(the git checkout) so `git pull` works for marketplace installs",
+        )
+
+    def test_includes_plugin_reinstall_step(self) -> None:
+        # `git pull` on marketplaces/ refreshes the manifest, but Claude Code
+        # still loads the pinned cache/<ver>/ snapshot. User must `/plugin install`
+        # to actually pick up the new version.
+        self.assertRegex(
+            self.content,
+            r"/plugin\s+install\s+ppt-master@ppt-master",
+            "instructions must tell user to run `/plugin install ppt-master@ppt-master` "
+            "after `git pull` so Claude Code re-fetches the new pinned version",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

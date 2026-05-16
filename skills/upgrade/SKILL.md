@@ -20,8 +20,10 @@ Mirrors the [`/context-mode:ctx-upgrade`](https://github.com/mksglu/context-mode
 
 1. **Find the plugin install path.** Priority order — pick the first existing path:
    - `$PPT_MASTER_HOME` (environment override)
-   - `~/.claude/plugins/ppt-master/` (Claude Code default)
+   - `~/.claude/plugins/marketplaces/ppt-master/` (Claude Code marketplace install — git checkout, `git pull`-able)
    - `D:/works/ppt-master/` (local dev fallback on Windows / `~/works/ppt-master/` on POSIX)
+
+   **Why `marketplaces/` and not `cache/`?** Claude Code's plugin manager stores the git checkout under `~/.claude/plugins/marketplaces/<name>/` and copies pinned version snapshots into `~/.claude/plugins/cache/<name>/<name>/<version>/` (no `.git` there). `git pull` only works on the marketplaces dir.
 
    If none exists, point the user at the [Install section of the README](https://github.com/mosjin/ppt-master#3-set-up) and stop.
 
@@ -61,7 +63,13 @@ Mirrors the [`/context-mode:ctx-upgrade`](https://github.com/mksglu/context-mode
    ```
    If this assertion fails, **stop and warn the user** — the upgrade brought back the black-PPT bug. They should pin to an earlier known-good version or file an issue.
 
-7. **Display a markdown checklist:**
+7. **Refresh Claude Code's pinned cache.** `git pull` only updates the marketplaces git checkout. Claude Code still loads the OLD pinned snapshot from `cache/ppt-master/ppt-master/<old-version>/` until the user re-installs. Tell the user to run:
+   ```
+   /plugin install ppt-master@ppt-master
+   ```
+   This re-fetches the new version into `cache/ppt-master/ppt-master/<new-version>/` and switches the active install. Skip this step **only** if the path resolved to the dev fallback (`D:/works/ppt-master/` etc.) — in dev mode the code is read directly, no cache copy.
+
+8. **Display a markdown checklist:**
    ```
    ## ppt-master upgrade
    - [x] Plugin path: <PLUGIN_PATH>
@@ -69,10 +77,11 @@ Mirrors the [`/context-mode:ctx-upgrade`](https://github.com/mksglu/context-mode
    - [x] Version <OLD> → <NEW>
    - [x] pip install -r requirements.txt: OK
    - [x] #19 regression guard: parse_hex_color('white') = FFFFFF
+   - [x] /plugin install ppt-master@ppt-master (cache refreshed)
    ```
    Use `[x]` for success, `[ ]` for failure. Quote actual values.
 
-8. **Tell the user to reload the plugin** so the new SKILL.md / scripts register:
+9. **Tell the user to reload the plugin** so the new SKILL.md / scripts register:
    ```
    /reload-plugin ppt-master
    ```
