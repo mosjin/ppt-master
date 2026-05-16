@@ -170,20 +170,33 @@ PPT Master runs in **any tool with agent capability** — read/write files, exec
 
 ### 3. Set Up
 
-#### ⭐ Recommended — Claude Code plugin (one command)
+#### ⭐ Recommended — Claude Code plugin (two commands)
 
-```bash
-claude plugin add github:mosjin/ppt-master
+**Inside an active Claude Code session** (cleanest path — verified working):
+
+```
+/plugin marketplace add mosjin/ppt-master
+/plugin install ppt-master@ppt-master
 ```
 
-That's it. Skill registers automatically and `/ppt-master:ppt-master` becomes available immediately. Auto-updates work via `claude plugin update ppt-master`.
+After installing, restart Claude Code (or run `/reload-plugin ppt-master`) so the skill is picked up. `/ppt-master:ppt-master` then becomes available.
 
-> Inside an active Claude Code session you can also do it interactively:
-> ```
-> /plugin marketplace add mosjin/ppt-master
-> /plugin install ppt-master@ppt-master
-> /reload-plugin ppt-master    # picks up updates after git pull
-> ```
+**From a system shell** (same two steps, just via the `claude` CLI):
+
+```bash
+claude plugin marketplace add mosjin/ppt-master
+claude plugin install ppt-master@ppt-master
+```
+
+> ⚠️ `claude plugin add github:<owner>/<repo>` does **not** exist — `add` is not a subcommand. Use `marketplace add` first, then `install`.
+
+To update later:
+
+```
+/plugin update ppt-master                  # inside Claude Code
+# OR
+git -C ~/.claude/plugins/ppt-master pull origin main && reload Claude Code
+```
 
 After install, fetch Python deps **once** from the installed location:
 
@@ -242,7 +255,7 @@ If you see `None`, you're on an older release — update via your install path:
 
 | Install path | Update command |
 |---|---|
-| Claude Code plugin | `claude plugin update ppt-master` (or `git -C ~/.claude/plugins/ppt-master pull`) |
+| Claude Code plugin | `/plugin update ppt-master` (inside session) or `git -C ~/.claude/plugins/ppt-master pull` (shell) |
 | `npx skills` | `npx skills update mosjin/ppt-master` |
 | Gemini CLI | `gemini skills update mosjin/ppt-master` |
 | Manual git clone | `python3 skills/ppt-master/scripts/update_repo.py` or `git pull` |
