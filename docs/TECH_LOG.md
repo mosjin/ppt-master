@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-05-17: /ppt-master:upgrade — 路径写错 + 缓存刷新缺失（eduForge #23 follow-up）
+<!-- 中文：## 2026-05-17：/ppt-master:upgrade 子技能的两处隐藏 bug —— 编写时未真机测试 -->
+
+### 1. Problem
+2026-05-16 跟兄弟仓库 (LeanSVG, eduForge) 同步 ship 了 `/ppt-master:upgrade` 子技能（commit `7d428732`）。次日真机 e2e 测试发现：**8/8 tests GREEN 但 slash command 对真实 marketplace 用户不工作**。
+
+### 2. Root Cause
+两个独立 bug，均源自「测试只验证 docstring 字符串，没有真机跑过 git pull」：
+
+1. **路径写错** — SKILL.md 优先级 `~/.claude/plugins/ppt-master/`，**这个路径根本不存在**于 Claude Code marketplace 安装。真实布局：
+   - `~/.claude/plugins/marketplaces/ppt-master/` — git checkout（有 `.git`，可 git pull）
+   - `~/.claude/plugins/cache/ppt-master/ppt-master/<version>/` — pinned snapshot（无 `.git`）
+
+2. **缓存刷新缺失** — 即使 git pull 成功，Claude Code 仍加载 `cache/ppt-master/ppt-master/<old-version>/` 的旧 pinned snapshot。**必须告诉用户 `/plugin install ppt-master@ppt-master` 触发重装**。
+
+### 3. Fix
+[PR #5](https://github.com/mosjin/ppt-master/pull/5) (commit `ff6ef58`):
+- 路径优先级改正：`~/.claude/plugins/marketplaces/ppt-master/`
+- SKILL.md 新增 step 7：tell user to run `/plugin install ppt-master@ppt-master`
+- 新增 2 个 TDD 断言（10/10 GREEN，原 8/8）：
+  - `test_path_priority_targets_marketplaces_dir`
+  - `test_includes_plugin_reinstall_step`
+- Checklist 加 cache-refresh 条目
+- **eduForge #19 regression guard 保持 GREEN**：`parse_hex_color('white') == 'FFFFFF'`
+
+### 4. Verification
+真机端到端验证：
+- `cd ~/.claude/plugins/marketplaces/ppt-master && git pull --ff-only origin main` → `8d119ec..ff6ef58` ✅
+- 10/10 upgrade-skill tests + 3/3 named-color regression guards GREEN
+
+### 5. Lessons
+- **规则**：用「测试 docstring 字符串」做 TDD guard 时，**至少**做一次真机端到端走 SKILL.md 的步骤。
+- **原因**：docstring 测试对 SKILL.md 是必要的（slash command 的运行时规约就是文档），但绝不够。这次 8/8 GREEN 让我以为完工了，e2e 才暴露 2 个 prod bug。
+- **规则**：写 Claude Code 插件升级流程时，**先 `ls ~/.claude/plugins/`** 看真实布局，再写路径。`marketplaces/` 和 `cache/` 是分开的，前者是 git checkout，后者是 pinned snapshot，`git pull` 只能在前者工作。
+- **跨仓库**：同一 bug 在 LeanSVG ([#4](https://github.com/mosjin/LeanSVG/pull/4) `2f04405`) 和 eduForge_skill ([#27](https://github.com/mosjin/eduForge_skill/pull/27) `ca51c67`) 中同时存在，因为三个 SKILL.md 是 copy-paste 兄弟。教训：copy-paste 兄弟会同时复制 bug，统一 e2e 一次就能抓三个。
+
+---
+
 ## 2026-05-07: SVG Quality Check Gate — max-3 self-correcting loop (Issue #133)
 
 ### 1. Problem
