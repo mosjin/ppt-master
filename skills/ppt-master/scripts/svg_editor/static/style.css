@@ -50,6 +50,13 @@ html, body {
     padding: 8px 0;
 }
 
+.slide-list-empty {
+    padding: 12px 16px;
+    color: #5a5a7a;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 /* Scrollbar */
 #slide-list::-webkit-scrollbar {
     width: 6px;
@@ -110,10 +117,75 @@ html, body {
 #panel-center {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: stretch;
     justify-content: stretch;
     background: #12121f;
     overflow: hidden;
+}
+
+#slide-nav {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #2a2a4a;
+    background: #16162a;
+    user-select: none;
+}
+
+.nav-btn {
+    min-width: 32px;
+    height: 28px;
+    padding: 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    color: #c0c0d8;
+    background: transparent;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.nav-btn:hover:not(:disabled) {
+    color: #ffffff;
+    background: #2a2a4a;
+    border-color: #5a5a7a;
+}
+
+.nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+#nav-label {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 220px;
+    max-width: 480px;
+    padding: 0 6px;
+    font-size: 13px;
+    color: #c0c0d8;
+    justify-content: center;
+}
+
+#nav-counter {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: #f5c542;
+    white-space: nowrap;
+}
+
+#nav-name {
+    color: #8a8aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #svg-container {
@@ -179,6 +251,7 @@ html, body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
 }
 
 #panel-right .panel-header {
@@ -369,9 +442,39 @@ html, body {
     font-style: italic;
 }
 
-/* --- Save button --- */
+/* --- Action buttons --- */
+#preview-actions {
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.btn-lang-toggle {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 2;
+    min-width: 34px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #c0c0d8;
+    background: transparent;
+    border: 1px solid #3a3a5a;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-lang-toggle:hover {
+    color: #ffffff;
+    background: #2a2a4a;
+    border-color: #5a5a7a;
+}
+
 #btn-save {
-    margin: 12px 16px 16px;
     padding: 11px 0;
     font-size: 14px;
     font-weight: 600;
@@ -390,6 +493,28 @@ html, body {
 
 #btn-save:active {
     background: #d5a522;
+}
+
+#btn-exit-preview {
+    padding: 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #c0c0d8;
+    background: transparent;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+#btn-exit-preview:hover {
+    color: #ffffff;
+    background: #2a2a4a;
+    border-color: #5a5a7a;
+}
+
+#btn-exit-preview:active {
+    background: #1e1e36;
 }
 
 /* ======================== MODAL ======================== */

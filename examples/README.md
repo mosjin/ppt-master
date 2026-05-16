@@ -1,6 +1,6 @@
 # PPT Master Example Projects
 
-> This directory contains **22 curated example projects** covering consulting style, general-purpose style, creative style, magazine editorial style, and cultural narrative paradigms, totaling **309 SVG presentation pages**.
+> This directory contains **23 curated example projects** covering consulting style, general-purpose style, creative style, magazine editorial style, and cultural narrative paradigms, totaling **329 SVG presentation pages**.
 
 **[Preview all example projects online](https://hugohe3.github.io/ppt-master/)**
 
@@ -10,7 +10,7 @@
 |----------|----------|-------------|------------|
 | Consulting Style | 9 | 152 pages | Data-driven, structured, professional whitespace |
 | General-Purpose | 5 | 55 pages | Flexible layouts, diverse themes, dark tech |
-| Creative Style | 4 | 55 pages | Unique visual language, cultural aesthetics |
+| Creative Style | 5 | 75 pages | Unique visual language, cultural aesthetics |
 | Magazine & Cultural Narrative | 4 | 47 pages | Photo-rich editorial, Eastern aesthetics |
 
 ---
@@ -310,6 +310,23 @@
 
 ---
 
+### ppt169_image_text_showcase
+
+> **20 pages** - Image-text composition pattern showcase
+
+| Property | Details |
+|----------|---------|
+| **Canvas Format** | PPT 16:9 (1280×720) |
+| **Design Style** | General Versatile — Editorial showcase, each page a distinct visual language |
+| **Color Scheme** | Per-page palette (no deck-wide lock) — 14 palettes across the deck |
+| **Target Audience** | Designers, PPT creators, AI tool users |
+
+**Key Features**: A live catalogue of 20 image-text composition patterns — full-bleed hero, left-third portrait, right-bleed illustration, top-image with three-column text, Z-pattern montage, 3×3 grid with center image, circular radial annotation, full-bleed pixel texture with overlay cards, layered paper-cut with embedded text, narrow vertical strip with giant text, diagonal split, faded-image with oversized overlay text, symmetric top-text bottom-image, minimalist-swiss radial callouts, screen-print horizontal banner, hexagonal cutout with text-fill, three-image montage with text spanning all, and a chalkboard closing. Each page uses a different rendering and palette combination, demonstrating how rendering × palette × layout can be orthogonally varied.
+
+[View Project](./ppt169_image_text_showcase/) | [Design Spec](./ppt169_image_text_showcase/design_spec.md)
+
+---
+
 ### demo_project_intro_ppt169_20251211
 
 > **10 pages** - PPT Master official introduction
@@ -480,4 +497,4 @@ We welcome your project contributions! Please ensure:
 
 ---
 
-*Last updated: 2026-04-26*
+*Last updated: 2026-05-15*

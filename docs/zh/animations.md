@@ -7,9 +7,54 @@ PPT Master 导出的 PPTX 同时支持**页间转场**（page transition）与**
 | 层级 | 默认 | 原因 |
 |---|---|---|
 | 页间转场 | `fade`，0.4 秒 | 适合大多数 deck 的中性基线 |
-| 页内元素动画 | `mixed` 效果 + `after-previous` 触发 | 进入页面后元素自动按顺序级联入场，零交互即可看到完整动画过程，最能体现 deck 的动画能力 |
+| 页内元素动画 | `mixed` 效果 + `after-previous` 触发，0.4 秒时长 + 0.5 秒间隔 | 进入页面后元素自动按顺序级联入场，零交互即可看到完整动画过程，最能体现 deck 的动画能力 |
 
 修改设置只需对同一份 `svg_output/`（或 `svg_final/`）重跑 `svg_to_pptx.py`，无需重新跑 LLM。如要彻底关闭页内动画，加 `-a none`。
+
+## 对象级自定义动画
+
+默认动画是全局策略。若需要更具体的演示节奏，例如标题先淡入、图表第二个出现、关键注释最后飞入，可以使用可选的 `animations.json` sidecar。SVG 仍然只保存静态视觉结构；sidecar 只控制 PPTX 导出动画。
+
+当用户要求调整动画顺序、效果、时长或具体对象出现方式时，运行独立 [`customize-animations`](../../skills/ppt-master/workflows/customize-animations.md) 工作流。
+
+```bash
+# 从真实顶层 <g id> 锚点生成可编辑模板
+python3 skills/ppt-master/scripts/animation_config.py scaffold <project>
+
+# 导出前校验引用是否存在
+python3 skills/ppt-master/scripts/animation_config.py validate <project>
+
+# 导出时会自动读取 <project>/animations.json
+python3 skills/ppt-master/scripts/svg_to_pptx.py <project>
+```
+
+最小 sidecar：
+
+```json
+{
+  "version": 1,
+  "slides": {
+    "03_market": {
+      "groups": {
+        "title": { "effect": "fade", "order": 1 },
+        "chart": { "effect": "wipe", "order": 2, "duration": 0.6 },
+        "insight": { "effect": "fly", "order": 3, "delay": 0.2 },
+        "footer": { "effect": "none" }
+      }
+    }
+  }
+}
+```
+
+规则：
+
+- `slides` key 匹配 SVG 文件 stem（`03_market.svg` → `03_market`）。
+- `groups` key 匹配顶层 `<g id="...">` 锚点。
+- `effect: none` 会把该组移出入场动画序列。
+- `order` 只改变动画顺序，不改变页面图层顺序。
+- `delay` 是 `after-previous` 模式下该组开始前的秒数。
+- `duration` 覆盖该组的入场时长。
+- `--animation none` 覆盖 sidecar，强制关闭所有页内动画。
 
 ## 页间转场
 
@@ -36,7 +81,7 @@ python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --auto-advance 5
 
 默认开启（`mixed` 效果 + `after-previous` 触发）。共有三种 Start 模式，**与 PowerPoint 动画窗格的 Start 下拉菜单一一对应**：
 
-- **`on-click`**（单击时）—— 进入页面 → 第一次点击显示第一个语义组，后续每次点击按 z-order 显示下一个组。适合现场演讲，演讲者控制节奏。
+- **`on-click`**（单击时）—— 进入页面 → 第一次点击显示第一个语义组，后续每次点击按 z-order 显示下一个组。适合现场演讲，演讲者控制节奏。与 `--recorded-narration` 互斥，因为带旁白的视频导出需要无点击播放。
 - **`with-previous`**（与上一动画同时）—— 所有组在进入页面时一起入场，并行播放各自的入场动画。`--animation-stagger` 不生效。
 - **`after-previous`**（默认，在上一动画之后）—— 第一组进入页面时入场，后续组在前一个结束后接着出现，并按 `--animation-stagger` 增加额外间隔。适合展厅循环、录屏走查，或者只是想看流动效果不想点击。
 
@@ -72,8 +117,11 @@ python3 skills/ppt-master/scripts/svg_to_pptx.py <project> --animation-trigger w
 
 - `-a/--animation` — 效果名、`mixed`、`random` 或 `none`。默认 `mixed`。
 - `--animation-trigger` — Start 模式（与 PowerPoint 一致）：`on-click`、`with-previous`、`after-previous`（默认）。
-- `--animation-duration` — 单个元素入场秒数，默认 `0.3`。
-- `--animation-stagger` — `after-previous` 模式下两组之间的额外间隔（秒，默认 `0.4`）。其他模式忽略。
+- `--animation-duration` — 单个元素入场秒数，默认 `0.4`。
+- `--animation-stagger` — `after-previous` 模式下两组之间的额外间隔（秒，默认 `0.5`）。其他模式忽略。
+- `--animation-config` — sidecar 路径。默认自动读取 `<project>/animations.json`（如果存在）。
+
+> Note: `--recorded-narration` 会拒绝 `on-click`；带旁白的视频导出请使用 `after-previous` 或 `with-previous`。
 
 ## 锚点机制 — 顶层 `<g id="...">`
 

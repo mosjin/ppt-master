@@ -8,13 +8,19 @@ Before any PPT generation task, **you MUST first read [`skills/ppt-master/SKILL.
 
 PPT Master is an AI-driven presentation generation system. Multi-role collaboration (Strategist → Image_Generator → Executor) converts source documents (PDF/DOCX/URL/Markdown) into natively editable PPTX with real PowerPoint shapes (DrawingML).
 
-**Core Pipeline**: `Source Document → Create Project → Template Option → Strategist Eight Confirmations → [Image_Generator] → Executor → Quality Check → Post-processing → Export PPTX`
+**Core Pipeline**: `Source Document → Create Project → [Template] → Strategist Eight Confirmations → [Image_Generator] → Executor Live Preview → Quality Check → Post-processing → Export PPTX`
 
+> Topic-only requests with no source material: run the standalone [`topic-research`](skills/ppt-master/workflows/topic-research.md) workflow before SKILL.md Step 1 to gather web materials.
+>
+> Phase B resumption (split-mode execution): when the user opens a fresh chat and says "继续生成 projects/<x>" or similar, run the standalone [`resume-execute`](skills/ppt-master/workflows/resume-execute.md) workflow to enter Phase B (SVG generation + export) without re-running Phase A.
+>
 > Decks containing data charts: run the standalone [`verify-charts`](skills/ppt-master/workflows/verify-charts.md) workflow between the executor and post-processing steps to calibrate chart coordinates.
 >
 > Recorded narration / video export: run the standalone [`generate-audio`](skills/ppt-master/workflows/generate-audio.md) workflow after post-processing.
 >
-> Post-export iteration: whenever the user asks to change anything on a generated slide ("改一下", "调字号", "那里看着不对", "把图片换大点"), the [`visual-edit`](skills/ppt-master/workflows/visual-edit.md) workflow is available — surface it as an option. If the user describes the change with enough specificity to apply directly ("第 3 页副标题字号改 32"), edit the SVG directly instead; if they're vaguely pointing at "somewhere" on the deck, run the workflow.
+> Object-level animation tuning: when the user asks to change animation order, effect, timing, or a specific object's reveal behavior, run the standalone [`customize-animations`](skills/ppt-master/workflows/customize-animations.md) workflow. Default export already has global animations; do not create `animations.json` unless customization was requested.
+>
+> Live preview: any time the user mentions "live preview", "preview", "看效果", or wants to click/select a slide element, run [`live-preview`](skills/ppt-master/workflows/live-preview.md). Step 6 auto-starts it during generation; the workflow covers post-export re-entry and applying submitted annotations.
 
 ## Execution Requirements
 
@@ -24,6 +30,7 @@ PPT Master is an AI-driven presentation generation system. Multi-role collaborat
 - Technical SVG/PPT constraints live in [`skills/ppt-master/references/shared-standards.md`](skills/ppt-master/references/shared-standards.md).
 - Canvas choices live in [`skills/ppt-master/references/canvas-formats.md`](skills/ppt-master/references/canvas-formats.md).
 - Icon library details live in [`skills/ppt-master/templates/icons/README.md`](skills/ppt-master/templates/icons/README.md).
+- Before editing prompt files under `skills/ppt-master/references/` or Python under `skills/ppt-master/scripts/`, consult the matching style rule in [`docs/rules/`](docs/rules/).
 
 ## Compatibility Boundary
 
@@ -39,6 +46,7 @@ Convenience summary only — full workflow in [`skills/ppt-master/SKILL.md`](ski
 # Source content conversion
 python3 skills/ppt-master/scripts/source_to_md/pdf_to_md.py <PDF_file>
 python3 skills/ppt-master/scripts/source_to_md/doc_to_md.py <DOCX_or_other_file>
+python3 skills/ppt-master/scripts/source_to_md/excel_to_md.py <XLSX_or_XLSM_file>
 python3 skills/ppt-master/scripts/source_to_md/ppt_to_md.py <PPTX_file>
 python3 skills/ppt-master/scripts/source_to_md/web_to_md.py <URL>
 
@@ -49,8 +57,15 @@ python3 skills/ppt-master/scripts/project_manager.py validate <project_path>
 
 # Image tools and SVG quality check
 python3 skills/ppt-master/scripts/analyze_images.py <project_path>/images
+# In-pipeline AI image generation — manifest mode (required, even for 1 image):
+python3 skills/ppt-master/scripts/image_gen.py --manifest <project_path>/images/image_prompts.json
+python3 skills/ppt-master/scripts/image_gen.py --render-md <project_path>/images/image_prompts.json
+# Out-of-pipeline one-off / debug / single-image fixup only (no manifest, no sidecar):
 python3 skills/ppt-master/scripts/image_gen.py "prompt" --aspect_ratio 16:9 --image_size 1K -o <project_path>/images
+python3 skills/ppt-master/scripts/svg_editor/server.py <project_path> --live
 python3 skills/ppt-master/scripts/svg_quality_checker.py <project_path>
+python3 skills/ppt-master/scripts/animation_config.py scaffold <project_path>  # optional, only for custom object-level animation
+python3 skills/ppt-master/scripts/animation_config.py validate <project_path>  # optional, before re-export
 
 # Post-processing pipeline: run sequentially, one command at a time
 python3 skills/ppt-master/scripts/total_md_split.py <project_path>
@@ -58,7 +73,7 @@ python3 skills/ppt-master/scripts/finalize_svg.py <project_path>
 python3 skills/ppt-master/scripts/svg_to_pptx.py <project_path>
 ```
 
-## Architecture
+## Core Directories
 
 - `skills/ppt-master/SKILL.md` — main workflow authority.
 - `skills/ppt-master/references/` — role definitions and technical specifications.

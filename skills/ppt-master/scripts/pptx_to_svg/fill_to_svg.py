@@ -179,20 +179,192 @@ def _resolve_blip_fill(_elem, _palette, _prefix, _seq, _placeholder_hex) -> Fill
 
 
 def _resolve_patt_fill(elem: ET.Element, palette: ColorPalette | None,
-                       _prefix, _seq, placeholder_hex: str | None) -> FillResult:
-    """Pattern fills (<a:pattFill prst="..."/> with fg/bg colors). Approximate
-    with the foreground color so the shape isn't transparent. Future work:
-    emit a real <pattern> in defs.
-    """
+                       prefix, seq, placeholder_hex: str | None) -> FillResult:
+    """Pattern fills (<a:pattFill prst="..."/> with fg/bg colors)."""
     fg = elem.find("a:fgClr", NS)
-    color_elem = find_color_elem(fg)
-    hex_, alpha = resolve_color(color_elem, palette, placeholder_hex=placeholder_hex)
-    if hex_ is None:
+    bg = elem.find("a:bgClr", NS)
+    fg_hex, fg_alpha = resolve_color(
+        find_color_elem(fg), palette, placeholder_hex=placeholder_hex,
+    )
+    bg_hex, bg_alpha = resolve_color(
+        find_color_elem(bg), palette, placeholder_hex=placeholder_hex,
+    )
+    if fg_hex is None:
         return FillResult.inherit()
-    attrs: dict[str, str] = {"fill": hex_}
-    if alpha < 1.0:
-        attrs["fill-opacity"] = fmt_num(alpha, 4)
-    return FillResult(attrs=attrs)
+
+    prst = elem.attrib.get("prst", "")
+    geom = _pattern_foreground(prst, fg_hex, fg_alpha)
+    if geom is None:
+        # Unsupported preset → degrade to solid fg color so the shape at
+        # least carries the right tone. Round-trip will lose the texture.
+        attrs: dict[str, str] = {"fill": fg_hex}
+        if fg_alpha < 1.0:
+            attrs["fill-opacity"] = fmt_num(fg_alpha, 4)
+        return FillResult(attrs=attrs)
+    tile_w, tile_h, fg_svg = geom
+
+    if seq is None:
+        seq = [0]
+    seq[0] += 1
+    pattern_id = f"{prefix}patt{seq[0]}"
+    bg_rect = ""
+    if bg_hex is not None:
+        bg_opacity = (
+            f' fill-opacity="{fmt_num(bg_alpha, 4)}"'
+            if bg_alpha < 1.0 else ""
+        )
+        bg_rect = (
+            f'<rect width="{tile_w}" height="{tile_h}" '
+            f'fill="{bg_hex}"{bg_opacity}/>'
+        )
+    # Tag with data attributes so the reverse exporter can rebuild <a:pattFill>
+    # faithfully (preset + fg/bg colors) instead of inferring from path geometry.
+    bg_attr = f' data-pptx-bg="{bg_hex}"' if bg_hex is not None else ""
+    pattern_xml = (
+        f'<pattern id="{pattern_id}" patternUnits="userSpaceOnUse" '
+        f'width="{tile_w}" height="{tile_h}" '
+        f'data-pptx-pattern="{prst}" data-pptx-fg="{fg_hex}"{bg_attr}>'
+        f'{bg_rect}{fg_svg}</pattern>'
+    )
+    return FillResult(
+        attrs={"fill": f"url(#{pattern_id})"},
+        defs=[pattern_xml],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Per-preset SVG geometry for <a:pattFill prst="...">
+#
+# Each handler returns (tile_w, tile_h, foreground_svg). The caller wraps with
+# the background rect + <pattern> element. None means "unsupported preset" and
+# the caller degrades to a solid fg color.
+# ---------------------------------------------------------------------------
+
+def _pattern_foreground(prst: str, fg: str,
+                        fg_alpha: float) -> tuple[int, int, str] | None:
+    stroke_op = (
+        f' stroke-opacity="{fmt_num(fg_alpha, 4)}"'
+        if fg_alpha < 1.0 else ""
+    )
+    fill_op = (
+        f' fill-opacity="{fmt_num(fg_alpha, 4)}"'
+        if fg_alpha < 1.0 else ""
+    )
+
+    # Diagonal stripes — tile size and stroke width pick the visual weight.
+    diag = {
+        "ltUpDiag":   (8,  1.0, "up", False),
+        "dkUpDiag":   (8,  2.0, "up", False),
+        "wdUpDiag":   (16, 1.0, "up", False),
+        "dashUpDiag": (8,  1.0, "up", True),
+        "ltDnDiag":   (8,  1.0, "dn", False),
+        "dkDnDiag":   (8,  2.0, "dn", False),
+        "wdDnDiag":   (16, 1.0, "dn", False),
+        "dashDnDiag": (8,  1.0, "dn", True),
+    }
+    if prst in diag:
+        tile, sw, direction, dashed = diag[prst]
+        dash = ' stroke-dasharray="3 2"' if dashed else ""
+        if direction == "up":
+            d = f"M -2 {tile} L {tile} -2 M 0 {tile + 2} L {tile + 2} 0"
+        else:
+            d = f"M -2 0 L {tile} {tile + 2} M 0 -2 L {tile + 2} {tile}"
+        return tile, tile, (
+            f'<path d="{d}" stroke="{fg}"{stroke_op} '
+            f'stroke-width="{fmt_num(sw)}" fill="none"{dash}/>'
+        )
+
+    # Horizontal / vertical lines.
+    line_specs = {
+        "horz":     ("h", 8, 1.0, False),
+        "ltHorz":   ("h", 8, 0.5, False),
+        "dkHorz":   ("h", 8, 2.0, False),
+        "narHorz":  ("h", 4, 1.0, False),
+        "dashHorz": ("h", 8, 1.0, True),
+        "vert":     ("v", 8, 1.0, False),
+        "ltVert":   ("v", 8, 0.5, False),
+        "dkVert":   ("v", 8, 2.0, False),
+        "narVert":  ("v", 4, 1.0, False),
+        "dashVert": ("v", 8, 1.0, True),
+    }
+    if prst in line_specs:
+        axis, tile, sw, dashed = line_specs[prst]
+        dash = ' stroke-dasharray="3 2"' if dashed else ""
+        mid = tile / 2.0
+        if axis == "h":
+            line = (
+                f'<line x1="0" y1="{fmt_num(mid)}" '
+                f'x2="{tile}" y2="{fmt_num(mid)}"'
+            )
+        else:
+            line = (
+                f'<line x1="{fmt_num(mid)}" y1="0" '
+                f'x2="{fmt_num(mid)}" y2="{tile}"'
+            )
+        return tile, tile, (
+            f'{line} stroke="{fg}"{stroke_op} '
+            f'stroke-width="{fmt_num(sw)}"{dash}/>'
+        )
+
+    # Grids / crosses.
+    if prst == "cross":
+        return 8, 8, (
+            f'<line x1="0" y1="4" x2="8" y2="4" stroke="{fg}"{stroke_op} stroke-width="1"/>'
+            f'<line x1="4" y1="0" x2="4" y2="8" stroke="{fg}"{stroke_op} stroke-width="1"/>'
+        )
+    if prst == "diagCross":
+        d = (
+            "M -2 8 L 8 -2 M 0 10 L 10 0 "
+            "M -2 0 L 8 10 M 0 -2 L 10 8"
+        )
+        return 8, 8, (
+            f'<path d="{d}" stroke="{fg}"{stroke_op} stroke-width="1" fill="none"/>'
+        )
+    if prst in ("smGrid", "lgGrid"):
+        tile = 4 if prst == "smGrid" else 16
+        # Lines along top + left edges; tiles together produce a uniform grid.
+        return tile, tile, (
+            f'<path d="M 0 0 L {tile} 0 M 0 0 L 0 {tile}" '
+            f'stroke="{fg}"{stroke_op} stroke-width="0.5" fill="none"/>'
+        )
+    if prst == "dotGrid":
+        # Dots at corners → tiling yields a uniform dot grid.
+        return 8, 8, (
+            f'<circle cx="0" cy="0" r="1" fill="{fg}"{fill_op}/>'
+        )
+    if prst == "dotDmnd":
+        return 8, 8, (
+            f'<circle cx="0" cy="0" r="1" fill="{fg}"{fill_op}/>'
+            f'<circle cx="4" cy="4" r="1" fill="{fg}"{fill_op}/>'
+        )
+
+    # Percentage shading — single centered dot whose area matches the target
+    # density. Approximates PowerPoint's stipple without per-tile artwork.
+    if prst.startswith("pct"):
+        try:
+            pct = float(prst[3:])
+        except ValueError:
+            return None
+        pct = max(0.0, min(pct, 100.0))
+        tile = 8
+        radius = math.sqrt(pct / 100.0 * tile * tile / math.pi)
+        radius = max(0.3, min(radius, tile / 2.0))
+        return tile, tile, (
+            f'<circle cx="{tile / 2}" cy="{tile / 2}" '
+            f'r="{fmt_num(radius, 3)}" fill="{fg}"{fill_op}/>'
+        )
+
+    return None
+
+
+def _hex_distance(a: str, b: str) -> float:
+    """Euclidean distance between two #RRGGBB colors."""
+    try:
+        ar, ag, ab = int(a[1:3], 16), int(a[3:5], 16), int(a[5:7], 16)
+        br, bg, bb = int(b[1:3], 16), int(b[3:5], 16), int(b[5:7], 16)
+    except (ValueError, IndexError):
+        return 255.0
+    return math.sqrt((ar - br) ** 2 + (ag - bg) ** 2 + (ab - bb) ** 2)
 
 
 # ---------------------------------------------------------------------------
