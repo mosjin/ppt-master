@@ -8,8 +8,8 @@
     {
       "name": "ppt-master",
       "source": "./",
-      "description": "AI-driven SVG+PPTX generation. v2.7.3: parse_hex_color accepts CSS named colors + rgb() (fixes eduForge #19 black-PPT bug). v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). v2.6.0 upstream merge base.",
-      "version": "2.7.3"
+      "description": "AI-driven SVG+PPTX generation. v2.7.4: /ppt-master:upgrade path fix (marketplaces/ + /plugin install). v2.7.3: parse_hex_color accepts CSS named colors + rgb() (fixes eduForge #19 black-PPT bug). v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). Upstream synced to hugohe3 v2.7.0 commit 2bb651c8.",
+      "version": "2.7.4"
     }
   ]
 }
