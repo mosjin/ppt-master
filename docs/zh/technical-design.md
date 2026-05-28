@@ -36,13 +36,17 @@
     ↓
 [图表校准（可选）] → verify-charts 工作流（含数据图表的幻灯片在此步骤校准坐标）
     ↓
+[视觉自检（可选，opt-in）] → visual-review 工作流（仅在用户明确请求时触发）
+    ↓
 [后处理] → total_md_split.py（拆分讲稿）→ finalize_svg.py → svg_to_pptx.py
     ↓
 输出：
     exports/
-    └── presentation_<timestamp>.pptx          ← 原生形状版（DrawingML）— 推荐用于编辑与交付
+    ├── presentation_<timestamp>.pptx          ← 原生形状版（DrawingML）— 唯一标准产物，编辑/交付从这里走
+    └── presentation_<timestamp>_svg.pptx      ← SVG 快照版 pptx — 像素级视觉参考（加 --svg-snapshot 时生成）
+
+    # 默认流程（未指定 -o）始终写入
     backup/<timestamp>/
-    ├── presentation_svg.pptx                  ← SVG 快照版 — 像素级视觉参考备份
     └── svg_output/                            ← Executor 原始 SVG 备份（重跑 finalize_svg → svg_to_pptx 即可重建 pptx）
 ```
 
@@ -124,7 +128,7 @@ PPT Master 不只服务 PPT——同一套 SVG → DrawingML 流水线还能产�
 
 **为什么默认自由设计。** 模板是地板，但很容易变成天花板：它会把整个 deck 锁进模板自有的视觉惯用语，无视内容本身想要怎样被呈现。自由设计的布局从源内容的结构推导而来，而不是从一套固定语法套上去——视觉节奏跟着内容走，而不是跟内容打架。约束模式在窄场景里确实更好（品牌锁定的 deck、强类型场景如学术答辩或政府报告），所以它一直在；但 AI 不主动去抓，是用户去抓。
 
-**不主动匹配。** AI 不会基于内容向用户推荐、暗示或自动映射模板。即便某份 deck 看起来"明显适合"库里某个模板，没有用户点名，AI 也保持沉默，按自由设计走。理由是可靠性优先于发现性：把内容与模板做匹配是会随库演进而漂移的判断，一句错误的"或许你想用 X"会把用户推向 AI 本就无法可靠承诺的选择。发现性交给文档（`templates/layouts/README.md`）和显式查询路径（"有哪些模板可以用？"）承担，不放进运行时 prompt。
+**不主动匹配。** AI 不会基于内容向用户推荐、暗示或自动映射模板。即便某份 deck 看起来"明显适合"库里某个模板，没有用户点名，AI 也保持沉默，按自由设计走。理由是可靠性优先于发现性：把内容与模板做匹配是会随库演进而漂移的判断，一句错误的"或许你想用 X"会把用户推向 AI 本就无法可靠承诺的选择。发现性交给文档（三类各自的 `templates/{brands,layouts,decks}/README.md`）和显式查询路径（"有哪些模板可以用？"）承担，不放进运行时 prompt。
 
 **布局是 opt-in，图表和图标不是。** 这种不对称不是矛盾——*布局*正是锁定视觉惯用语的那一层（地板/天花板问题），而图表和图标是不会施加 deck 级风格约束的复用原语。同一个 `templates/` 目录，但在视觉契约里扮演的角色不同。
 
@@ -238,7 +242,8 @@ PowerPoint 的 DrawingML 是 SVG 表达力的严格子集。Executor 在一份�
 | `svg_output/` | 唯一源、手工编辑入口、`update_spec.py`、`svg_quality_checker.py` | 流水线中唯一**手写**而非派生的目录 |
 | `svg_final/` | IDE 内即时预览（VSCode/Cursor 直接打开 `.svg`）、浏览器单页预览 | `.pptx` 在 IDE 里打不开；`svg_output/` 因图标 / 图片是外部引用，IDE 中渲染不完整 |
 | `exports/<name>_<ts>.pptx`（native） | 主交付物——PowerPoint 中以 DrawingML 形状形态可编辑 | 唯一一份用户可在 PowerPoint 中原生改尺寸 / 改色 / 改样式的产物 |
-| `backup/<ts>/<name>_svg.pptx`（preview） | 跨平台单文件分发、整体多页浏览、邮件附件 | 自包含、多页、PowerPoint / Keynote / WPS / LibreOffice 都能直接打开；`svg_final/` 是文件夹，分发不便 |
+| `exports/<name>_<ts>_svg.pptx`（preview，需 `--svg-snapshot` 显式开启） | 跨平台单文件分发、整体多页浏览、邮件附件 | 自包含、多页、PowerPoint / Keynote / WPS / LibreOffice 都能直接打开；`svg_final/` 是文件夹，分发不便。默认关闭——live preview 已经覆盖 dev / 诊断场景的 SVG 视觉参考需求 |
+| `backup/<ts>/svg_output/`（默认流程下始终生成） | 不重跑 LLM 的前提下从冻结 SVG 源重建 pptx、长期存档 | 项目下游被改动后，Executor 原始 SVG 唯一的留存副本 |
 
 ### `svg_finalize/` 包有**两种**消费者
 
@@ -291,4 +296,4 @@ PowerPoint 的 DrawingML 是 SVG 表达力的严格子集。Executor 在一份�
 
 ## Standalone Workflows（独立工作流）
 
-五个能力（`create-template`、`verify-charts`、`customize-animations`、`live-preview`、`generate-audio`）作为独立工作流存在，而不是流水线步骤。每个都是稀疏触发的——按模板、按含图表的 deck、按一次动画微调、按一次具体抱怨、按一次视频导出，而不是按每个 deck。把任何一个塞进默认流水线，要么对大多数用户运行无意义的步骤（增加延迟和失败面），要么强制一刀切收窄主流程。保持 opt-in 让 deck 生成主流水线保持紧凑、可预期，同时在触发条件命中时仍提供这些能力；每个 `workflows/<name>.md` 是自包含的、按需加载——所以 prompt context 的开销也是 opt-in。
+六个能力（`create-template`、`verify-charts`、`customize-animations`、`live-preview`、`generate-audio`、`visual-review`）作为独立工作流存在，而不是流水线步骤。每个都是稀疏触发的——按模板、按含图表的 deck、按一次动画微调、按一次具体抱怨、按一次视频导出、按用户明确请求的一次视觉自检，而不是按每个 deck。把任何一个塞进默认流水线，要么对大多数用户运行无意义的步骤（增加延迟和失败面），要么强制一刀切收窄主流程。保持 opt-in 让 deck 生成主流水线保持紧凑、可预期，同时在触发条件命中时仍提供这些能力；每个 `workflows/<name>.md` 是自包含的、按需加载——所以 prompt context 的开销也是 opt-in。

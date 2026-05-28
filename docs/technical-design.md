@@ -36,13 +36,17 @@ User Input (PDF/DOCX/XLSX/URL/Markdown)
     ↓
 [Chart calibration (optional)] → verify-charts workflow (for decks containing data charts)
     ↓
+[Visual self-check (optional, opt-in)] → visual-review workflow (only when the user explicitly requests it)
+    ↓
 [Post-processing] → total_md_split.py (split notes) → finalize_svg.py → svg_to_pptx.py
     ↓
 Output:
     exports/
-    └── presentation_<timestamp>.pptx          ← Native shapes (DrawingML) — recommended for editing & delivery
+    ├── presentation_<timestamp>.pptx          ← Native shapes (DrawingML) — canonical output, edit & deliver from here
+    └── presentation_<timestamp>_svg.pptx      ← SVG snapshot pptx — pixel-perfect visual reference (opt-in via --svg-snapshot)
+
+    # Always written in default-flow mode (no -o)
     backup/<timestamp>/
-    ├── presentation_svg.pptx                  ← SVG snapshot — pixel-perfect visual reference backup
     └── svg_output/                            ← Archived Executor SVG source (rerun finalize_svg → svg_to_pptx to rebuild)
 ```
 
@@ -124,7 +128,7 @@ Templates are **opt-in, not default**. The default Strategist flow is free desig
 
 **Why default to free design.** Templates are floors that easily become ceilings: they lock the deck into the template's visual idioms regardless of how the content actually wants to be presented. Free-design layouts derive structure from the source content rather than imposing it from a fixed grammar, so the visual rhythm tracks the content rather than fighting it. Constrained mode is genuinely better in narrow cases (brand-locked decks, strongly-typed scenarios like academic defense or government report), so it stays available — but the AI doesn't proactively reach for it; the user does.
 
-**No proactive matching.** The AI does not suggest, hint at, or auto-map content to a template. Even when a deck looks like an obvious fit for an existing template, the AI stays silent and proceeds with free design unless the user has named the template. The reason is reliability over discoverability: matching content to templates is a judgment call that drifts as the library evolves, and a wrong "you might want X" pushes the user toward a commitment the AI cannot reliably make. Discoverability is handed to docs (`templates/layouts/README.md`) and to the explicit query path ("what templates are available?"), not the runtime prompt.
+**No proactive matching.** The AI does not suggest, hint at, or auto-map content to a template. Even when a deck looks like an obvious fit for an existing template, the AI stays silent and proceeds with free design unless the user has named the template. The reason is reliability over discoverability: matching content to templates is a judgment call that drifts as the library evolves, and a wrong "you might want X" pushes the user toward a commitment the AI cannot reliably make. Discoverability is handed to docs (the three `templates/{brands,layouts,decks}/README.md` per-kind indexes) and to the explicit query path ("what templates are available?"), not the runtime prompt.
 
 **Layouts are opt-in; charts and icons are not.** The asymmetry isn't an inconsistency — *layout* is what locks visual idiom (the floor/ceiling problem above), while charts and icons are reusable primitives that don't impose deck-wide style. Same `templates/` directory, different role in the visual contract.
 
@@ -238,7 +242,8 @@ The post-processing stage produces four artifacts. Each one serves a workflow th
 | `svg_output/` | source of truth, manual editing, `update_spec.py`, `svg_quality_checker.py` | only directory whose contents are authored, not derived |
 | `svg_final/` | IDE inline preview (VSCode/Cursor open `.svg` directly), browser open of a single page | `.pptx` is not openable in IDEs; `svg_output/` won't render fully because of external icon / image refs |
 | `exports/<name>_<ts>.pptx` (native) | primary deliverable — editable in PowerPoint with DrawingML shapes | only artifact whose shapes the user can resize / recolor / restyle natively in PowerPoint |
-| `backup/<ts>/<name>_svg.pptx` (preview) | cross-platform single-file distribution, multi-page browse, email attachment | self-contained, multi-page, opens in PowerPoint / Keynote / WPS / LibreOffice; an `svg_final/` folder is harder to distribute |
+| `exports/<name>_<ts>_svg.pptx` (preview, opt-in via `--svg-snapshot`) | cross-platform single-file distribution, multi-page browse, email attachment | self-contained, multi-page, opens in PowerPoint / Keynote / WPS / LibreOffice; an `svg_final/` folder is harder to distribute. Off by default — live preview already provides the SVG visual reference for dev/diagnostic work |
+| `backup/<ts>/svg_output/` (always written in default-flow mode) | re-export from frozen SVG sources without re-running the LLM, archival | the only persisted copy of the Executor's raw SVG source after the project has been edited downstream |
 
 ### The `svg_finalize/` package has TWO consumers
 
@@ -291,4 +296,4 @@ The interesting design choice is the animation **anchor**, not the effect list.
 
 ## Standalone Workflows
 
-Five capabilities (`create-template`, `verify-charts`, `customize-animations`, `live-preview`, `generate-audio`) live as standalone workflows rather than pipeline steps. Each is sparsely triggered — per-template, per-chart-deck, per-animation-tuning request, per-complaint, per-video-export — not per-deck. Folding any into the default pipeline would either run unnecessary steps for the majority of users (added latency and failure surface) or force a one-size-fits-all narrowing of the main flow. Keeping them opt-in lets the deck-generation pipeline stay tight and predictable while making the capability available when its trigger condition fires; each `workflows/<name>.md` is self-contained and loaded on demand, so paying the prompt-context cost is also opt-in.
+Six capabilities (`create-template`, `verify-charts`, `customize-animations`, `live-preview`, `generate-audio`, `visual-review`) live as standalone workflows rather than pipeline steps. Each is sparsely triggered — per-template, per-chart-deck, per-animation-tuning request, per-complaint, per-video-export, per explicit visual-review request — not per-deck. Folding any into the default pipeline would either run unnecessary steps for the majority of users (added latency and failure surface) or force a one-size-fits-all narrowing of the main flow. Keeping them opt-in lets the deck-generation pipeline stay tight and predictable while making the capability available when its trigger condition fires; each `workflows/<name>.md` is self-contained and loaded on demand, so paying the prompt-context cost is also opt-in.

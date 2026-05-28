@@ -82,13 +82,15 @@ Anchors the downstream confirmations e (Color), f (Icon), g (Typography), h (Ima
 
 Accept user combinations and one-off coinages ("Scandinavian + slight industrial"). The list is for recall, not constraint.
 
-> **Template vs descriptor**: a style mention may sound like a template name ("Google style" vs the `google_style/` template directory). Step 3 only triggers on an explicit template directory path supplied by the user — bare names and style words never copy templates. If a template was triggered upstream, its files are already in `<project_path>/templates/`. Layer 2 only handles descriptors that did NOT come with a template path.
+> **Template vs descriptor**: a style mention may sound like a template name ("academic style" vs the `academic_defense/` template directory). Step 3 only triggers on an explicit template directory path supplied by the user — bare names and style words never copy templates. If a template was triggered upstream, its files are already in `<project_path>/templates/`. Layer 2 only handles descriptors that did NOT come with a template path.
 
 **Downstream effect**: e / f / g / h values realize the Layer 2 descriptor on top of the Layer 1 mode. Example: "A) Versatile + neo-Chinese" → e leans cinnabar / ink / rice-paper; g pairs serif (KaiTi-class) with sans body; f minimal line icons; h restrained traditional imagery with negative space.
 
 ### e. Color Scheme Recommendation
 
-**Hard rule**: User / template colors are truth. If the user has specified colors (HEX, brand colors, or natural-language directives like "use blue as primary"), or a template was loaded with its own theme colors, lock those directly and skip the recommendation table. Do not adjust them to fit any palette or industry default. Only when no color signal exists from user or template do you proactively propose a scheme below.
+**Hard rule**: User / template colors are truth. If the user has specified colors (HEX, brand colors, or natural-language directives like "use blue as primary"), or a template was loaded at Step 3 via an explicit path (`<project_path>/templates/design_spec.md`), lock those directly and skip the recommendation table. Do not adjust them to fit any palette or industry default. Only when no color signal exists from user or template do you proactively propose a scheme below.
+
+> Step 3 already collapses brand and layout inputs into one fused `design_spec.md`; this layer reads from that single source and does not need to re-resolve brand vs layout precedence.
 
 Proactively provide a color scheme (HEX values) based on content characteristics and industry.
 
@@ -163,6 +165,8 @@ See [`../templates/icons/README.md`](../templates/icons/README.md) for the curre
 
 **Mandatory**: propose **two** combinations to the user — one concord (safe), one contrast (with tension). Do not default to "title = body, same font" without explicit user request.
 
+> **Template precedence**: when a template was loaded at Step 3 via an explicit path and declares `title` / `body` font stacks in `<project_path>/templates/design_spec.md §III Typography` / §IV (or whichever heading the fused spec uses), lock those directly and skip the two-combination presentation. Same precedence as e. — user override > template values.
+
 **Cross-platform pre-installed reference**:
 
 | Category | Safe families |
@@ -221,6 +225,55 @@ Baseline choice follows **content density**, not style. Common: `18px` (dense) /
 
 > Two baseline columns are illustrative only — for any other baseline (16/20/22/28/32…), multiply the row's ratio. Checker reads live `body` from `spec_lock.md`. Executor may pick any px within a role's band without pre-declaring; values outside **every** band require lock extension first.
 
+#### Formula Rendering Policy
+
+Formula rendering is part of Typography confirmation. Recommend one policy and let the user confirm or override it inside item g.
+
+| Policy | Behavior | Use |
+|---|---|---|
+| `mixed` (default) | Render complex formula-worthy expressions to PNG; keep simple inline math as editable text / Unicode | Most academic, engineering, educational, and technical decks |
+| `render-all` | Render every formula-worthy expression to PNG | Formula-heavy teaching / research decks where visual consistency matters more than editability |
+| `text-only` | Do not render formulas; keep expressions as editable text / Unicode | Business decks, light technical briefs, or user preference for editability |
+
+**Hard rule**: `$...$` / `$$...$$` in source material are input signals only. Do not scan output files for dollar-delimited formulas. After confirmation, Strategist decides which source expressions become formula assets and writes them explicitly to `images/formula_manifest.json`.
+
+**Formula-worthy expressions**:
+
+| Render as PNG | Keep as text |
+|---|---|
+| Fractions, radicals, integrals, sums, limits, matrices, multiline derivations, complex super/subscripts | `O(n log n)`, `x = 3`, single Greek letters, short inline variables, simple percentages / KPIs |
+
+**Forbidden — invented math**: formula assets must faithfully structure source content. Do not create a new equation just to make a slide look more academic.
+
+**Manifest step**: After the Eight Confirmations and before writing `design_spec.md`, if policy is `mixed` or `render-all` and formulas are selected:
+
+```bash
+mkdir -p <project_path>/images
+python3 skills/ppt-master/scripts/latex_render.py <project_path>
+```
+
+Write the manifest first at `<project_path>/images/formula_manifest.json`. Use this shape:
+
+```json
+{
+  "providers": ["codecogs", "quicklatex", "mathpad", "wikimedia"],
+  "items": [
+    {
+      "id": "formula_001",
+      "latex": "E = mc^2",
+      "display": "block",
+      "color": "#1D1D1F",
+      "background": "#FFFFFF",
+      "transparent": true,
+      "dpi": 400,
+      "filename": "formula_001.png"
+    }
+  ]
+}
+```
+
+The script renders PNGs into `images/`, trying `codecogs`, `quicklatex`, `mathpad`, then `wikimedia` unless the manifest overrides `providers`. `codecogs`, `quicklatex`, and `mathpad` preserve requested formula color; `wikimedia` is an availability fallback and may require visual checking on dark themes. Formula PNGs are transparent by default: use `background` as the temporary render matte and local background-removal reference. Set `transparent: false` only when the final formula must keep an opaque background. It writes `pixel_width`, `pixel_height`, `ratio`, `file`, `provider`, and `status` back into the manifest. Run `analyze_images.py <project_path>/images` after formula rendering so the formula PNGs are included in the same inventory pass as user images.
+
 ### h. Image Usage Confirmation
 
 | Option | Approach | Suitable Scenarios |
@@ -236,8 +289,8 @@ Baseline choice follows **content density**, not style. Common: `18px` (dense) /
 | Mode | Trigger | Mechanism |
 |---|---|---|
 | **Path A** | `IMAGE_BACKEND` configured (default) | `image_gen.py` runs in Step 5 |
-| **Path B** | User explicitly names host's image tool (Codex / Antigravity) | Host-native generation |
-| **Offline Manual** | Path A unavailable AND Path B not in use | Prompts written to `images/image_prompts.json`; user generates externally and places files in `project/images/` |
+| **Path B** | `IMAGE_BACKEND` not configured AND host has a native image tool (Codex / Antigravity / Claude Code / similar) — auto-selected, no user prompting needed | Host-native generation |
+| **Offline Manual** | `IMAGE_BACKEND` not configured AND host has no native image tool | Prompts written to `images/image_prompts.json`; user generates externally and places files in `project/images/` |
 
 Selection is automatic in Step 5 (A → B → Manual). Detailed contract: [`image-generator.md`](./image-generator.md) §3.2.
 
@@ -277,9 +330,10 @@ After the candidates, append one line:
 | Span a personality spectrum | Typically: one conservative-default (industry norm), one shifted-tone (same fit, 1-2 ticks different), one bold-contrast (more expressive, may challenge default). No near-duplicates. |
 | `Mood` line MUST include a real-world analogy | Company / publication / event the user can picture. Adjective stacks alone are forbidden. |
 | Adapt labels to chat language | Schema is English by default. Chinese chat → render as 「方案 A / 视觉 / 色彩 / 情绪」. Structure stays the same; only the labels translate. |
-| Skip presentation when user has specified | User-named rendering or palette (chat / template) bypasses the candidate flow — lock directly per the truth-precedence rule. |
+| Skip presentation when user has specified | User-named rendering or palette (chat / brand / template) bypasses the candidate flow — lock directly per the truth-precedence rule. |
+| `custom` is a tail-case, not a default | When no preset fits, a candidate may set `rendering: custom` and / or `palette: custom` (rules: [`image-renderings/_index.md`](../image-renderings/_index.md) §1.5, [`image-palettes/_index.md`](../image-palettes/_index.md) §2). At most one candidate per dimension may carry `custom`; one candidate may carry both dimensions as `custom`. `Visual` / `Color` lines describe the behavior in prose, never by naming a competing preset. |
 
-**Forbidden — padding with conflicts**: if e.'s HEX cannot find ≥3 compatible palettes, present the smaller set (2 candidates) and state "your color is unusual — only N palettes can carry it without conflict." Never fill remaining slots with known-conflicting options.
+**Forbidden — padding with conflicts**: if e.'s HEX cannot find ≥3 compatible palettes, present the smaller set (2 candidates) and state "your color is unusual — only N palettes can carry it without conflict." A `custom` candidate is allowed only when its prose genuinely describes a tail-case the presets cannot — not as a slot-filler. Never fill remaining slots with known-conflicting options.
 
 **Worked example** (e. = `#1E3A5F` navy + `#F8F9FA` off-white + `#D4AF37` gold; d. = consulting; chat in English):
 
@@ -302,7 +356,24 @@ After the candidates, append one line:
 > Reference images: see references/ai-image-comparison/ for matching PNGs by name.
 ```
 
+**Worked example — `custom × custom`** (tail-case; e.g. 新中式 deck with `#1A1A1A` + `#F5EFE0` + `#A52A2A`):
+
+```
+[Plan A] 文人雅致 — custom × custom
+  Visual: dry-brush burnt-ink, five tonal gradations, 宣纸 paper-grain, deliberate negative space; 朱泥 seal as single red mark
+  Color: cream #F5EFE0 ~65% negative space + burnt-ink #1A1A1A ~20% strokes + cinnabar #A52A2A 3-5% seal
+  Mood: literati restraint; like 苏州博物馆 pacing
+```
+
+`Visual` / `Color` lines feed `spec_lock.md`'s `image_*_behavior` rows verbatim.
+
 After the user picks a candidate (or supplies a custom variant), proceed to "Recording the lock" below.
+
+#### Prompt depth for §VIII rows
+
+**Hard rule**: When §VIII contains paper-figure or subject-domain rows (scientific subjects, specialized fields, regulated content), each row's `generation description` follows [`image-generator.md`](./image-generator.md) §4.2 Prompt depth — expand to the depth the subject demands; 500-1000+ words is normal.
+
+**Forbidden — generic shortening**: never drop a paper-figure row's prompt to a 50-word generic illustration brief.
 
 ---
 
@@ -368,18 +439,27 @@ After auto-selecting, cross-check `image-palettes/_index.md` compatibility matri
 
 **Recording the lock** — after picking, write to:
 
-- `design_spec.md §III Visual Theme` — add two lines under the color table:
+- `design_spec.md §III Visual Theme` — add lines under the color table:
   ```
   - **Image Rendering**: vector-illustration
   - **Image Palette**: cool-corporate
   ```
-- `spec_lock.md colors` section — add two extra rows at the bottom:
+- `spec_lock.md colors` section — add rows at the bottom:
   ```
   - image_rendering: vector-illustration
   - image_palette: cool-corporate
   ```
 
-Image_Generator reads these two fields and applies them deck-wide. If both are absent (legacy decks), Image_Generator falls back to inferring them from `d. Style` and `e. Color` — quality is acceptable but not optimal. Always lock both when C is selected.
+**Hard rule — `custom` recording**: when the picked candidate has `rendering: custom` or `palette: custom`, also write the sibling `*_behavior` row. Source: the candidate's `Visual` line (for rendering) / `Color` line (for palette), expanded to cover the prose requirements in [`image-renderings/_index.md`](../image-renderings/_index.md) §1.5 / [`image-palettes/_index.md`](../image-palettes/_index.md) §2 (chat candidates are compressed; spec_lock prose covers all axes). Both `design_spec.md` and `spec_lock.md` must carry the behavior line. Example for the `custom × custom` candidate above:
+
+```
+- image_rendering: custom
+- image_rendering_behavior: "Dry-brush burnt-ink with five tonal gradations, 宣纸 paper-grain at 12% opacity, deliberate negative space; 朱泥 seal as a single red mark; no Western outlines, no gradients."
+- image_palette: custom
+- image_palette_behavior: "宣纸 cream `#F5EFE0` carries ~65% as negative space; burnt-ink `#1A1A1A` anchors ~20% as brush strokes; cinnabar `#A52A2A` only in 3-5% as seal. Literati restraint — no fourth color."
+```
+
+Image_Generator reads these fields and applies them deck-wide. If both are absent (legacy decks), it falls back to inferring from `d. Style` and `e. Color` — quality is acceptable but not optimal. Always lock both when C is selected.
 
 #### hero_page suggestion (same confirmation turn)
 
@@ -397,14 +477,16 @@ After the user picks a candidate, scan the outline and surface any pages where t
 | Layout suggestion | e.g., `Wide landscape (suitable for full-screen/illustration)` |
 | **Layout pattern** | **MANDATORY** — one or more `#<id> <name>` joined by ` + ` from `image-layout-patterns.md`. Combine a Primary id with optional Modifier ids when the page needs it (e.g. `#48 side-by-side comparison + #21 rounded rectangle crop + #29 two-stop scrim`). A single Primary is fine when the page calls for it. See the GATE earlier in this section. Empty cells or invented ids are invalid. |
 | Purpose | e.g., `Cover background` |
-| Type | Narrative shorthand: Background / Photography / Illustration / Diagram / Decorative pattern. (The internal-composition type used by Image_Generator — one of `background / hero / typography / infographic / flowchart / framework / comparison / timeline / scene` — is inferred from `Purpose` per [`image-type-templates/_index.md`](./image-type-templates/_index.md); no need to label every row.) |
-| **Acquire Via** | `ai` / `web` / `user` / `placeholder` — drives Step 5 dispatch |
-| Status | Initial status must be `Pending`, `Existing`, or `Placeholder`; see [`svg-image-embedding.md`](svg-image-embedding.md) for the full status enum |
+| Type | Free-form category tag — `Background`, `Photography`, `Illustration`, `Diagram`, `Portrait`, `Latex Formula`, etc. Required for formula rows (`Latex Formula`). |
+| **Acquire Via** | `ai` / `web` / `user` / `formula` / `placeholder` — only `ai` and `web` drive Step 5 dispatch |
+| Status | Initial status must be `Pending`, `Existing`, `Rendered`, or `Placeholder`; see [`svg-image-embedding.md`](svg-image-embedding.md) for the full status enum |
 | **Reference** | Free-form **intent description** (NOT a search query); feeds Image_Generator (ai) or Image_Searcher (web) |
 | `text_policy` (optional, `ai` rows only) | `none` (no text in image) or `embedded` (text is part of the artwork). Leave blank when Image_Generator should decide per row. Long body / data / lists stay in SVG. |
 | `page_role` (optional, `ai` rows only) | `local` (image is a region block on an SVG page) or `hero_page` (image is the page's main voice). Leave blank when Image_Generator should decide per row. |
 
 **No-crop flag (exception only)**: most images are croppable — Executor defaults to `preserveAspectRatio="xMidYMid slice"`. When an image must NOT lose pixels (data screenshots, charts, certificates, contracts, dense diagrams), append `no-crop` to its `spec_lock.md images` entry. Executor will then size the container to the native ratio and use `meet`. Don't tag the rest.
+
+**Formula rows**: rendered LaTeX PNGs are image rows with `Acquire Via: formula`, `Status: Rendered`, and `Type: Latex Formula`. Always append `no-crop` in `spec_lock.md images`. They are not AI images and never go through Step 5.
 
 **Reference field**: Write visual intent, not provider mechanics.
 
@@ -420,6 +502,7 @@ After the user picks a candidate, scan the outline and surface any pages where t
 |---|---|
 | `ai` | **Subject + intent + composition** only. Do NOT repeat style words ("flat design", "modern", "vector") or HEX values — both are already locked deck-wide by h.5 (rendering + palette) and `design_spec §III` (colors). Image_Generator's prompt assembler injects them automatically. |
 | `web` | Concrete subject/place/object first, then 1-3 quality descriptors |
+| `formula` | Original LaTeX plus short placement intent, e.g. `formula_001: block energy-mass equation for P03` |
 
 **Allowed web quality descriptors**:
 
@@ -438,23 +521,15 @@ After the user picks a candidate, scan the outline and surface any pages where t
 | `ai` | "Atmospheric backdrop suggesting digital innovation; calm central area reserved for slide title overlay; light geometric anchor at one edge" |
 | `ai` | "Four-stage value chain from raw input to R&D output; icons should suggest tax-form → cost-reduction → equipment-upgrade → innovation; no text labels (SVG overlays them)" |
 
-**Image type descriptions**:
-
-| Type | Suitable Scenarios |
-|------|-------------------|
-| Background | Full-page backgrounds for covers/chapter pages; reserve text area |
-| Photography | Real scenes, people, products, architecture |
-| Illustration | Flat design, vector style, concept diagrams |
-| Diagram | Flowcharts, architecture diagrams, concept relationship maps |
-| Decorative pattern | Partial decoration, textures, borders, divider elements |
-
 🚧 **GATE — before writing §VIII Image Resource List**: when image approach is B/C/D/E (anything other than A "no images"), this is a three-layer hard requirement, not a suggestion:
 
 1. **Read** — `read_file references/image-layout-patterns.md`. The file enumerates 72 numbered techniques split into **Part 1 — Primary Structures** (#1–#19 container layouts, #38–#46 image-as-canvas + native overlay, #47–#56 multi-image) and **Part 2 — Modifier Layers** (#20–#26 non-rectangular crops, #27–#37 overlays & masks, #57–#61 texture, #62–#72 special). The four `Image narrative intent` values below cover only broad categories.
-2. **Produce** — every row in §VIII Image Resource List MUST fill the `Layout pattern` column with one or more `#<id> <name>` joined by ` + ` drawn verbatim from this file (Primary + optional Modifiers). Rows with empty `Layout pattern` or with an id that does not exist in the file are invalid.
+2. **Produce** — every non-formula row in §VIII Image Resource List MUST fill the `Layout pattern` column with one or more `#<id> <name>` joined by ` + ` drawn verbatim from this file (Primary + optional Modifiers). Rows with empty cells, paraphrased names, or invented ids are invalid. Formula rows are the only exception; use `formula-inline` or `formula-block`.
 3. **Image-as-canvas coverage** — for any deck with ≥4 image-bearing pages, at least one page MUST use a `#38–#46` pattern (image-as-canvas + native overlay) unless every image is a pure cover / chapter divider / atmosphere backdrop. This family is the most-skipped one and is usually the right answer for content-rich pages with photographs. If the deck legitimately has no opportunity for it, state the reason in §VIII directly under the table.
 
 **Skip-detection signal for self-audit**: if you notice that every page's `Layout pattern` column resolves to #2/#3 (left-third or right-third), #5/#6 (top-bottom band), or generic side-by-side, you have not actually consulted the file — re-read and reconsider. The default left/right and top/bottom split bias is the failure mode this gate exists to break.
+
+**Skip-detection signal — `text_policy` column**: if every `ai` row resolves to `none` and the deck contains any paper-figure / academic schematic / panel-comparison / data-axis page, you defaulted instead of judging per row. Consult [`image-generator.md`](image-generator.md) §5.3 positive-trigger table and re-decide each row. `none` for every row is correct only when no row matches a trigger; otherwise this is the same class of failure as the layout-pattern signal above.
 
 **Image narrative intent** (decide *before* the ratio table — determines whether the image lives in a container at all):
 

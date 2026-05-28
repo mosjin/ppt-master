@@ -7,7 +7,7 @@ description: >
   "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".
 metadata:
   author: mosjin
-  version: "2.7.5"
+  version: "2.8.0"
   repository: https://github.com/mosjin/ppt-master
 ---
 
@@ -15,7 +15,7 @@ metadata:
 
 > AI-driven multi-format SVG content generation system. Converts source documents into high-quality SVG pages through multi-role collaboration and exports to PPTX.
 
-**Core Pipeline**: `Source Document → Create Project → Template Option → Strategist → [Image_Generator] → Executor → Post-processing → Export`
+**Core Pipeline**: `Source Document → Create Project → [Template] → Strategist → [Image_Generator] → Executor Live Preview → Quality Check → Post-processing → Export`
 
 > [!CAUTION]
 > ## 🚨 Global Execution Discipline (MANDATORY)
@@ -29,7 +29,8 @@ metadata:
 > 5. **NO SPECULATIVE EXECUTION** — "Pre-preparing" content for subsequent Steps is FORBIDDEN (e.g., writing SVG code during the Strategist phase)
 > 6. **NO SUB-AGENT SVG GENERATION** — Executor Step 6 SVG generation is context-dependent and MUST be completed by the current main agent end-to-end. Delegating page SVG generation to sub-agents is FORBIDDEN
 > 7. **SEQUENTIAL PAGE GENERATION ONLY** — In Executor Step 6, after the global design context is confirmed, SVG pages MUST be generated sequentially page by page in one continuous pass. Grouped page batches (for example, 5 pages at a time) are FORBIDDEN
-> 8. **SPEC_LOCK RE-READ PER PAGE** — Before generating each SVG page, Executor MUST `read_file <project_path>/spec_lock.md`. All colors / fonts / icons / images MUST come from this file — no values from memory or invented on the fly. Executor MUST also look up the current page's `page_rhythm` tag and apply the matching layout discipline (`anchor` / `dense` / `breathing` — see executor-base.md §2.1). This rule exists to resist context-compression drift on long decks and to break the uniform "every page is a card grid" default
+> 8. **SPEC_LOCK RE-READ PER PAGE** — Before generating each SVG page, Executor MUST `read_file <project_path>/spec_lock.md`. All colors / fonts / icons / images MUST come from this file — no values from memory or invented on the fly. Executor MUST also look up the current page's `page_rhythm` (`anchor` / `dense` / `breathing`), `page_layouts` (which template SVG to inherit, if any), and `page_charts` (which chart template to adapt, if any). Empty / absent entries are intentional Strategist signals — see executor-base.md §2.1. This rule exists to resist context-compression drift on long decks and to break the uniform "every page is a card grid" default
+> 9. **SVG MUST BE HAND-WRITTEN, NOT SCRIPT-GENERATED** — Every SVG page is written by the main agent directly, one page at a time (see rules 6 and 7). Writing or running a Python / Node / shell script that produces the SVG files in batch — looping over pages, templating from data, or emitting them via a generator — is FORBIDDEN, including under "save tokens", "quick draft", or "user is in a hurry" pretexts. The script-generation path was tried on a feature branch and abandoned: cross-page visual consistency depends on per-page authoring with full upstream context, which a generator script cannot reproduce
 
 > [!IMPORTANT]
 > ## 🌐 Language & Communication Rule
@@ -52,10 +53,10 @@ metadata:
 | `${SKILL_DIR}/scripts/source_to_md/doc_to_md.py` | Documents to Markdown — native Python for DOCX/HTML/EPUB/IPYNB, pandoc fallback for legacy formats (.doc/.odt/.rtf/.tex/.rst/.org/.typ) |
 | `${SKILL_DIR}/scripts/source_to_md/excel_to_md.py` | Excel workbooks to Markdown — supports .xlsx/.xlsm; legacy .xls should be resaved as .xlsx |
 | `${SKILL_DIR}/scripts/source_to_md/ppt_to_md.py` | PowerPoint to Markdown |
-| `${SKILL_DIR}/scripts/source_to_md/web_to_md.py` | Web page to Markdown |
-| `${SKILL_DIR}/scripts/source_to_md/web_to_md.cjs` | Node.js fallback for WeChat / TLS-blocked sites (use only if `curl_cffi` is unavailable; `web_to_md.py` now handles WeChat when `curl_cffi` is installed) |
+| `${SKILL_DIR}/scripts/source_to_md/web_to_md.py` | Web page to Markdown (supports WeChat via `curl_cffi`) |
 | `${SKILL_DIR}/scripts/project_manager.py` | Project init / validate / manage |
 | `${SKILL_DIR}/scripts/analyze_images.py` | Image analysis |
+| `${SKILL_DIR}/scripts/latex_render.py` | LaTeX formula rendering (manifest-driven PNG assets) |
 | `${SKILL_DIR}/scripts/image_gen.py` | AI image generation (multi-provider) |
 | `${SKILL_DIR}/scripts/svg_quality_checker.py` | SVG quality check |
 | `${SKILL_DIR}/scripts/total_md_split.py` | Speaker notes splitting |
@@ -70,6 +71,7 @@ For complete tool documentation, see `${SKILL_DIR}/scripts/README.md`.
 | Index | Path | Purpose |
 |-------|------|---------|
 | Layout templates | `${SKILL_DIR}/templates/layouts/layouts_index.json` | Query available page layout templates |
+| Brand presets | `${SKILL_DIR}/templates/brands/brands_index.json` | Query available brand identity presets (color / typography / logo / voice) |
 | Visualization templates | `${SKILL_DIR}/templates/charts/charts_index.json` | Query available visualization SVG templates (charts, infographics, diagrams, frameworks) |
 | Icon library | `${SKILL_DIR}/templates/icons/` | See `${SKILL_DIR}/templates/icons/README.md`; search icons on demand with `ls templates/icons/<library>/ \| grep <keyword>` |
 
@@ -77,9 +79,14 @@ For complete tool documentation, see `${SKILL_DIR}/scripts/README.md`.
 
 | Workflow | Path | Purpose |
 |----------|------|---------|
-| `create-template` | `workflows/create-template.md` | Standalone template creation workflow |
+| `topic-research` | `workflows/topic-research.md` | Pre-pipeline — gather web sources when the user supplies only a topic with no source files |
+| `create-template` | `workflows/create-template.md` | Standalone layout template creation workflow |
+| `create-brand` | `workflows/create-brand.md` | Standalone brand-only template creation (identity preset; no SVG page roster) |
+| `resume-execute` | `workflows/resume-execute.md` | Phase B entry — resume execution in a fresh chat after Phase A (Step 1–5) completed in another session (split mode) |
 | `verify-charts` | `workflows/verify-charts.md` | Chart coordinate calibration — run after SVG generation if the deck contains data charts |
-| `visual-edit` | `workflows/visual-edit.md` | Browser-based visual editor for fine-grained edits — run only when the user explicitly requests it after export |
+| `customize-animations` | `workflows/customize-animations.md` | Object-level PPTX animation customization — run only when the user explicitly asks to tune animation order/effects/timing |
+| `live-preview` | `workflows/live-preview.md` | Browser-based live preview — auto-started during generation and re-enterable any time the user mentions "live preview", "preview", "看效果", or wants to click/select a slide element |
+| `visual-review` | `workflows/visual-review.md` | Per-page rubric-based visual self-check — run only when the user explicitly asks for a visual re-pass on the generated SVGs (between Executor and post-processing). Opt-in only; never invoked by the main pipeline. |
 
 ---
 
@@ -88,6 +95,8 @@ For complete tool documentation, see `${SKILL_DIR}/scripts/README.md`.
 ### Step 1: Source Content Processing
 
 🚧 **GATE**: User has provided source material (PDF / DOCX / EPUB / URL / Markdown file / text description / conversation content — any form is acceptable).
+
+> **No source content?** When the user supplies only a topic name or requirements without any file or substantive description, run the [`topic-research`](workflows/topic-research.md) workflow first, then return here with its products as input.
 
 When the user provides non-Markdown content, convert immediately:
 
@@ -100,8 +109,22 @@ When the user provides non-Markdown content, convert immediately:
 | PPTX / PowerPoint deck | `python3 ${SKILL_DIR}/scripts/source_to_md/ppt_to_md.py <file>` |
 | EPUB / HTML / LaTeX / RST / other | `python3 ${SKILL_DIR}/scripts/source_to_md/doc_to_md.py <file>` |
 | Web link | `python3 ${SKILL_DIR}/scripts/source_to_md/web_to_md.py <URL>` |
-| WeChat / high-security site | `python3 ${SKILL_DIR}/scripts/source_to_md/web_to_md.py <URL>` (requires `curl_cffi`; falls back to `node web_to_md.cjs <URL>` only if that package is unavailable) |
+| WeChat / high-security site | `python3 ${SKILL_DIR}/scripts/source_to_md/web_to_md.py <URL>` (requires `curl_cffi`, included in `requirements.txt`) |
 | Markdown | Read directly |
+
+> **Office vector assets (EMF/WMF) from DOCX/PPTX sources**:
+> `doc_to_md.py` / `ppt_to_md.py` extract embedded Office vector images (.emf/.wmf)
+> alongside bitmap images. After `import-sources`, these land in `images/`
+> together with `image_manifest.json` and are first-class assets in §VIII Image Resource List.
+>
+> **Do NOT convert EMF/WMF to PNG.** The PPT Master pipeline preserves them as external
+> references (`finalize_svg.py` skips them) and `svg_to_pptx.py` embeds them as
+> PPTX-native media via `image/x-emf` / `image/x-wmf` MIME — PowerPoint renders them at full vector fidelity.
+> Converting via LibreOffice/Inkscape introduces CJK font substitution drift and
+> rasterization loss; the original EMF/WMF is always higher fidelity than the converted PNG.
+>
+> Browser-based live preview cannot render EMF (will show blank) — this is expected;
+> the PPTX output is the source of truth.
 
 **✅ Checkpoint — Confirm source content is ready, proceed to Step 2.**
 
@@ -134,69 +157,118 @@ Import source content (choose based on the situation):
 
 🚧 **GATE**: Step 2 complete; project directory structure is ready.
 
-**Default — free design.** Proceed directly to Step 4. Do NOT query `layouts_index.json`. Do NOT ask the user an A/B template-vs-free-design question.
+**Default — free design.** Proceed directly to Step 4. Do NOT query any `*_index.json` unless triggered. Do NOT ask the user. Do NOT proactively suggest, hint at, or fuzzy-match any template based on content, slug-like words, or vague style descriptions.
 
-**Template flow is opt-in.** Enter it only when an explicit trigger appears in the user's prior messages:
+**Template flow triggers ONLY on explicit directory paths** supplied by the user in their initial message. The trigger rule is mechanical, not interpretive:
 
-1. Names a specific template (e.g., "用 mckinsey 模板" / "use the academic_defense template")
-2. Names a style / brand reference that maps to a template (e.g., "McKinsey 那种" / "Google style" / "学术答辩样式")
-3. Asks what templates exist (e.g., "有哪些模板可以用")
+| User input contains | Step 3 action |
+|---|---|
+| One or more explicit template directory paths (each resolves to a directory containing `design_spec.md` with `kind: brand` / `kind: layout` / `kind: deck` in its YAML frontmatter) | Read each spec's `kind`, dispatch per the kind matrix below, fuse if multiple |
+| Anything else — bare template names ("用 academic_defense"), style descriptions ("麦肯锡风格"), brand mentions ("招商银行风格"), vague intent ("想用个模板"), or silence | Skip Step 3, free design |
 
-When triggered: read `${SKILL_DIR}/templates/layouts/layouts_index.json`, resolve the match (or list options for trigger 3), and copy:
+There is no slug matching, no name lookup, no fuzzy resolution. A name without a path does not trigger — the user must give a path the AI can `cd` into.
+
+> Style descriptions ("麦肯锡风格" / "Keynote 风" / "极简风" / etc.) never trigger Step 3. They flow into Strategist's Eight Confirmations as a style brief (color / typography / tone in confirmations e–g).
+
+> Bare names ("academic_defense", "招商银行", "anthropic") do NOT trigger Step 3 even if a matching directory exists in the library. The user must give a path. AI must not "helpfully" resolve a name to a path.
+
+> "What templates exist?" is out-of-band Q&A — answer by listing entries from `brands_index.json` / `layouts_index.json` / `decks_index.json` together with their paths. Listing alone does not advance the pipeline; the user must send a path back to trigger Step 3.
+
+> To create a new layout or deck, read [`workflows/create-template.md`](workflows/create-template.md). To create a new brand, read [`workflows/create-brand.md`](workflows/create-brand.md).
+
+#### Three template kinds
+
+The architecture has three independent reference bundles. Full schema in [`docs/zh/templates-architecture.md`](../../docs/zh/templates-architecture.md). Summary:
+
+| Kind | Physical dir | Contains | Frontmatter |
+|---|---|---|---|
+| **brand** | `templates/brands/<id>/` | identity-only segment: color / typography / logo / voice / icon style | `kind: brand` |
+| **layout** | `templates/layouts/<id>/` | structure-only segment: canvas / page structure / page types / SVG roster | `kind: layout` |
+| **deck** | `templates/decks/<id>/` | full replica: identity + structure + middle (template overview) segments | `kind: deck` |
+
+**Segment ownership** (governs fusion override priority):
+
+| Segment | Sections | Owner kind on fusion |
+|---|---|---|
+| Identity | Color Scheme / Typography / Logo / Voice & Tone / Icon Style | brand |
+| Structure | Canvas / Page Structure / Page Types / SVG Roster | layout |
+| Middle | Template Overview (use cases / design intent) | deck (no other kind writes this) |
+
+#### Single-path dispatch
+
+| User path's `kind` | Step 3 action |
+|---|---|
+| `kind: brand` | Copy `design_spec.md` + logo files + asset subdirs (`images/` / `illustrations/` / `icons/`) into `<project>/templates/`. Strategist locks identity segment as truth; structure stays free. |
+| `kind: layout` | Copy `design_spec.md` + SVG roster + asset files into `<project>/templates/`. Strategist locks structure; identity decided in Eight Confirmations e–g. |
+| `kind: deck` | Copy everything (`design_spec.md` + SVGs + logos + assets) into `<project>/templates/`. Strategist locks all segments; Eight Confirmations narrows to deck-content fields (audience / page count / outline / tone tweaks). |
 
 ```bash
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.svg <project_path>/templates/
-cp ${SKILL_DIR}/templates/layouts/<template_name>/design_spec.md <project_path>/templates/
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.png <project_path>/images/ 2>/dev/null || true
-cp ${SKILL_DIR}/templates/layouts/<template_name>/*.jpg <project_path>/images/ 2>/dev/null || true
+TEMPLATE_DIR=<user-supplied path>
+cp -r ${TEMPLATE_DIR}/* <project_path>/templates/
 ```
 
-**Soft hint (non-blocking).** When content is an obvious strong match for an existing template (e.g., academic defense, government report, McKinsey-style deck) AND no template trigger fired, emit a single-sentence notice and continue without waiting:
+The single-line copy suffices for all three kinds — the spec's `kind` field tells Strategist how to read it; downstream code doesn't distinguish.
 
-> Note: the library has a template `<name>` that matches this scenario closely. Say the word if you want to use it; otherwise I'll continue with free design.
+#### Multi-path fusion
 
-Hint, not question — do NOT block. Skip entirely on weak/ambiguous match.
+When the user gives two or more paths of **different kinds**, Step 3 fuses them into a single `<project>/templates/design_spec.md`. **Default granularity is segment-level integer replacement** — entire identity / structure / middle segments are taken from the highest-priority source for that segment, no implicit field-level mixing.
 
-> To create a new global template, read `workflows/create-template.md`
+Override priority by segment:
 
-**✅ Checkpoint — Default path proceeds to Step 4 without user interaction. If a template trigger fired, template files are copied before advancing.**
+| Combination | Identity from | Structure from | Middle from |
+|---|---|---|---|
+| brand only | brand | (free design) | (none) |
+| layout only | (free design) | layout | (none) |
+| deck only | deck | deck | deck |
+| brand + layout | brand | layout | (none) |
+| brand + deck | brand (overrides deck) | deck | deck |
+| layout + deck | deck | layout (overrides deck) | deck |
+| brand + layout + deck | brand | layout | deck |
+
+Field-level micro-adjustment (e.g. "use anthropic brand but primary changed to #FF0000") is **not** part of Step 3 fusion — it flows into Strategist Eight Confirmations e–g as a normal user request.
+
+#### Same-kind multiple paths — conflict resolution
+
+When the user gives two paths of the **same kind** (e.g. `brands/anthropic` + `brands/google`), Step 3 surfaces a conflict prompt before fusing — like resolving a git merge conflict:
+
+```
+AI: 你给了两个 brand，检测到段级冲突：
+    - Color Scheme（Anthropic 橙红 vs Google 多色）
+    - Typography（Styrene/AnthropicSans vs GoogleSans/Roboto）
+    - Logo（Anthropic 标 vs Google 标）
+    - Voice & Tone（restrained vs friendly）
+    - Icon Style（stroke vs filled）
+
+    要 (a) 全部按 Anthropic / (b) 全部按 Google / (c) 逐段挑？
+```
+
+Rules:
+- Default: no implicit ordering — every cross-source segment difference is reported as a conflict
+- Only when the user picks `(c)` does AI walk through each segment one by one
+- Field-level conflicts are out of scope — segment-level only
+- Three or more same-kind paths are not supported — ask the user to converge to at most two
+
+#### Fused spec provenance
+
+When fusion happens (any multi-path case), the resulting `<project>/templates/design_spec.md` carries a provenance block immediately under its H1:
+
+```markdown
+> **Fused from:**
+> - deck: `templates/decks/招商银行/` （base）
+> - brand: `templates/brands/anthropic/` （identity override）
+> - layout: `templates/layouts/academic_defense/` （structure override）
+> - conflicts resolved: Color Scheme from anthropic（user picked a）
+```
+
+Single-path Step 3 does **not** add provenance (the source is self-evident from the copied files).
+
+**✅ Checkpoint — Default path proceeds to Step 4 without user interaction. If the user supplied one or more explicit template paths, those have been dispatched (or fused) into `<project_path>/templates/` before advancing.**
 
 ---
 
 ### Step 4: Strategist Phase (MANDATORY — cannot be skipped)
 
 🚧 **GATE**: Step 3 complete; default free-design path taken, or (if triggered) template files copied into the project.
-
-#### Step 4.0 — Domain Reference Auto-load (v0.5+)
-
-**Before** the Eight Confirmations, scan the source markdown's first 5 lines for domain trigger keywords. If matched, auto-load the domain's design system reference and use its predefined values for the eight confirmations (skip BLOCKING — values are pre-approved).
-
-```python
-import re
-from pathlib import Path
-
-SKILL_DIR = Path(__file__).parent  # ppt-master skill dir
-domain_registry = SKILL_DIR / "references/_domain_registry.md"
-sources = list((Path("<project_path>/sources").glob("*.md")))
-if sources and domain_registry.exists():
-    head = "\n".join(sources[0].read_text(encoding="utf-8").splitlines()[:5])
-    # Parse domain_registry.md for (regex, ref_filename) pairs
-    for m in re.finditer(r"\|\s*([^|]+?)\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|", domain_registry.read_text(encoding="utf-8")):
-        domain, regex_pat, ref_file = m.group(1).strip(), m.group(2), m.group(3)
-        if re.search(regex_pat, head):
-            ref_path = SKILL_DIR / "references" / ref_file
-            if ref_path.exists():
-                print(f"🎯 Domain matched: {domain} → loading {ref_file}")
-                # Read the reference; its §XI provides eight-confirmation defaults
-                # → skip Step 4 BLOCKING; use defaults from reference
-                break
-```
-
-**Effect**: when the source markdown is from a known domain (eduforge / future: physics / chemistry), Strategist uses the domain's design system without the user being asked the eight confirmations again. Standalone ppt-master users get domain styling free; domain skill (eduforge) users get one-command end-to-end PPT.
-
-**See**: `references/_domain_registry.md` for registered domains and trigger regex.
-
-#### Step 4.1 — read role + template (when no domain matched)
 
 First, read the role definition:
 ```
@@ -207,7 +279,7 @@ Read references/strategist.md
 
 **Eight Confirmations** (full template: `templates/design_spec_reference.md`):
 
-⛔ **BLOCKING**: present the Eight Confirmations as a bundled recommendation set and **wait for explicit user confirmation or modification** before outputting Design Specification & Content Outline. This is the single core confirmation point — once confirmed, all subsequent steps proceed automatically.
+⛔ **BLOCKING**: present the Eight Confirmations as a single bundled recommendation set and **wait for explicit user confirmation or modification** before outputting Design Specification & Content Outline. This is the single core confirmation point — once confirmed, all subsequent steps proceed automatically.
 
 1. Canvas format
 2. Page count range
@@ -215,10 +287,39 @@ Read references/strategist.md
 4. Style objective
 5. Color scheme
 6. Icon usage approach
-7. Typography plan
+7. Typography plan, including formula rendering policy
 8. Image usage approach
 
-If the user provided images, run analysis **before outputting the design spec**:
+**Mandatory — split-mode note** (not a ninth confirmation): after listing the eight confirmation details, you MUST append exactly one short line (rendered in the user's language, prefixed with 💡) about generation mode. Pick the variant by qualitative read of Phase A signals — recommended page count, source-material bulk, whether `topic-research` ran with substantial web-fetch accumulation:
+
+| Signal read | Line content |
+|---|---|
+| Heavy (long page count / bulky sources / heavy web-fetch accumulation) | State estimated page count and large source size; recommend switching to [split mode](workflows/resume-execute.md) after Step 5 — stop this chat, open a fresh window and input `继续生成 projects/<project_name>` to enter Phase B (SVG generation + export); no response or "continue" = default continuous mode. |
+| Normal (default) | State scale is moderate, default continuous mode generates in one go; if mid-way window switch is desired, input `继续生成 projects/<project_name>` after Step 5 to switch to [split mode](workflows/resume-execute.md). |
+
+This line is required output every run — the user must always see the mode choice exists. Whether to act on it is the user's call.
+
+**Formula rendering policy lives inside item 7 (Typography plan)**:
+
+| Policy | Behavior |
+|---|---|
+| `mixed` (default) | Strategist renders complex formula-worthy expressions as PNG assets; simple inline expressions remain editable text / Unicode |
+| `render-all` | Strategist renders every formula-worthy expression as PNG assets |
+| `text-only` | No formula rendering; formulas remain editable text / Unicode |
+
+After the Eight Confirmations are approved and **before outputting `design_spec.md` / `spec_lock.md`**, if the confirmed formula policy is `mixed` or `render-all` and the content contains formula-worthy expressions, Strategist MUST:
+
+1. Identify explicit LaTeX and any source expressions that should be faithfully structured as formulas.
+2. Write `<project_path>/images/formula_manifest.json` with only the formulas selected for rendering.
+3. Run:
+   ```bash
+   python3 ${SKILL_DIR}/scripts/latex_render.py <project_path>
+   ```
+4. Include the rendered formula PNGs as `Acquire Via: formula`, `Status: Rendered`, `Type: Latex Formula` rows in `design_spec.md §VIII Image Resource List`; also list them in `spec_lock.md images` with `| no-crop`.
+
+The formula renderer uses a provider fallback chain by default: `codecogs,quicklatex,mathpad,wikimedia`. The first three are color-aware; Wikimedia is an availability fallback. Formula PNGs are transparent by default: manifest `background` is the temporary render matte and transparency-removal reference, not a retained final background unless `transparent: false` is set for that item. Do not scan `spec_lock.md` for `$...$` or `$$...$$`. Dollar-delimited math in source material is only a signal for Strategist; the renderer consumes the explicit manifest.
+
+If the user provided images or formula PNGs were rendered, run analysis **before outputting the design spec**:
 ```bash
 python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images
 ```
@@ -233,6 +334,7 @@ python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images
 ```markdown
 ## ✅ Strategist Phase Complete
 - [x] Eight Confirmations completed (user confirmed)
+- [x] Split-mode note appended below the eight items (heavy or normal variant)
 - [x] Design Specification & Content Outline generated
 - [x] Execution lock (spec_lock.md) generated
 - [ ] **Next**: Auto-proceed to [Image_Generator / Executor] phase
@@ -242,9 +344,9 @@ python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images
 
 ### Step 5: Image Acquisition Phase (Conditional)
 
-🚧 **GATE**: Step 4 complete; Design Specification & Content Outline generated and user confirmed.
+🚧 **GATE**: Step 4 complete; Design Specification & Content Outline generated and user confirmed. Any formula rows already have `Acquire Via: formula` and `Status: Rendered`.
 
-> **Trigger**: At least one row in the resource list has `Acquire Via: ai` and/or `Acquire Via: web`. If every row is `user` or `placeholder`, skip to Step 6.
+> **Trigger**: At least one row in the resource list has `Acquire Via: ai` and/or `Acquire Via: web`. If every row is `user`, `formula`, or `placeholder`, skip to Step 6.
 
 **Always load the common framework**:
 
@@ -256,11 +358,13 @@ Then **lazy-load the path-specific reference** for each row that actually needs 
 
 | Acquire Via | Load reference (only if any such row exists) | Run |
 |---|---|---|
-| `ai` | `references/image-generator.md` | `python3 ${SKILL_DIR}/scripts/image_gen.py ...` |
+| `ai` | `references/image-generator.md` | `python3 ${SKILL_DIR}/scripts/image_gen.py --manifest <project_path>/images/image_prompts.json` |
 | `web` | `references/image-searcher.md` | `python3 ${SKILL_DIR}/scripts/image_search.py ...` |
 | `user` / `placeholder` | (skip) | (skip) |
 
-A deck with only `ai` rows never loads `image-searcher.md`; a deck with only `web` rows never loads `image-generator.md`. A mixed deck loads both, processes each row through its own path, and writes both `image_prompts.md` and `image_sources.json`.
+A deck with only `ai` rows never loads `image-searcher.md`; a deck with only `web` rows never loads `image-generator.md`. A mixed deck loads both, processes each row through its own path, and writes both `image_prompts.json` and `image_sources.json`.
+
+> ⚠️ **In-pipeline ai path MUST use manifest mode** — even when only 1 ai row exists. Write `images/image_prompts.json` first, then run `image_gen.py --manifest`, then `image_gen.py --render-md` to produce the `image_prompts.md` sidecar. The positional form (`image_gen.py "prompt" ...`) is reserved for **out-of-pipeline one-off testing / single-image fixups** — it skips manifest + sidecar, leaving no audit trail.
 
 Workflow:
 
@@ -268,15 +372,25 @@ Workflow:
 2. Generate prompts (ai rows) and/or run search (web rows) per [image-base.md](references/image-base.md) §2 dispatch table
 3. Verify every row reaches a terminal status: `Generated` (ai success), `Sourced` (web success), or `Needs-Manual`
 
-**✅ Checkpoint — Confirm acquisition attempted for every row, proceed to Step 6**:
+**✅ Checkpoint — Confirm acquisition attempted for every row**:
 ```markdown
 ## ✅ Image Acquisition Phase Complete
-- [x] image_prompts.md created (when any ai rows processed)
+- [x] image_prompts.json created (when any ai rows processed)
+- [x] image_prompts.md sidecar rendered (when any ai rows processed)
 - [x] image_sources.json created (when any web rows processed)
 - [x] Each row: status is `Generated` / `Sourced` / `Needs-Manual` (no `Pending` remaining)
 ```
 
-> On acquisition failure, do NOT halt — follow the Failure Handling rule in [image-base.md](references/image-base.md) §5: retry once, then mark the row `Needs-Manual`, report to user, and continue to Step 6.
+**Default — auto-proceed to Step 6.** Only when the user's Step 4 response explicitly opted into split mode (in reply to the optional hint), output the Phase A hand-off below and stop this conversation:
+
+  ```markdown
+  ## ✅ Phase A Complete
+  - [x] Spec: `design_spec.md`, `spec_lock.md`
+  - [x] Resources: `sources/`, `images/`, `templates/`
+  - [ ] **Next**: open a fresh chat window and input `继续生成 projects/<project_name>` to enter Phase B via the [`resume-execute`](workflows/resume-execute.md) workflow.
+  ```
+
+> On acquisition failure, do NOT halt — follow the Failure Handling rule in [image-base.md](references/image-base.md) §5: retry once, then mark the row `Needs-Manual`, report to user, and continue to the checkpoint above.
 
 ---
 
@@ -297,42 +411,47 @@ Read references/executor-consultant-top.md # Top consulting style (MBB level)
 
 **Design Parameter Confirmation (Mandatory)**: before the first SVG, output key design parameters from the spec (canvas dimensions, color scheme, font plan, body font size). See executor-base.md §2.
 
-**Per-page spec_lock re-read (Mandatory)**: before **each** SVG page, `read_file <project_path>/spec_lock.md` and use only its colors / fonts / icons / images. Resists context-compression drift on long decks. See executor-base.md §2.1.
+**Live Preview Auto-Startup (Mandatory)**: before the first SVG, automatically start the browser editor in live mode and keep it running continuously through Executor + Step 7 export:
+```bash
+python3 ${SKILL_DIR}/scripts/svg_editor/server.py <project_path> --live
+```
+- Start it immediately when Executor begins; `svg_output/` may be empty. Editor opens at `http://localhost:5050`; port conflict → `--port <other>` and report the actual URL.
+- Run it as a long-running side process/session; do not wait for it to exit before generating SVG pages. Do not wait for user confirmation after startup.
+- **Service must keep running** until one of: (a) the user clicks **Exit preview** in the browser, or (b) the user explicitly asks in chat to stop it. Generation continues even if the user closes the editor.
+- **Do NOT read or apply submitted annotations during generation.** Users may annotate at any time, but Executor proceeds without touching them. The window to apply annotations opens only after Step 7 completes — see [`workflows/live-preview.md`](workflows/live-preview.md).
+- UI button semantics and editor details: see [`workflows/live-preview.md`](workflows/live-preview.md) Notes.
+
+**Pre-generation Batch Read (Mandatory)**: before the first SVG, batch-read every distinct layout SVG referenced in `spec_lock.page_layouts` and every distinct chart SVG referenced in `spec_lock.page_charts` (plus any §VII backup charts). One read per file, up front — do not re-read these during page generation. See executor-base.md §1.0.
+
+**Per-page spec_lock re-read (Mandatory)**: before **each** SVG page, `read_file <project_path>/spec_lock.md` and use only its colors / fonts / icons / images, plus the per-page `page_rhythm` / `page_layouts` / `page_charts` lookups (resolves to template SVGs already loaded in the batch read above). Resists context-compression drift on long decks. See executor-base.md §2.1.
 
 > ⚠️ **Main-agent only**: SVG generation MUST stay in the current main agent — page design depends on full upstream context. Do NOT delegate to sub-agents.
 > ⚠️ **Generation rhythm**: generate pages sequentially, one at a time, in the same continuous context. Do NOT batch (e.g., 5 per group).
 
 **Visual Construction Phase**: generate SVG pages sequentially, one at a time, in one continuous pass → `<project_path>/svg_output/`
 
-**Quality Check Gate (Mandatory — self-correcting loop)** — after all SVGs, BEFORE speaker notes:
+**Quality Check Gate (Mandatory)** — after all SVGs, BEFORE annotation handling and speaker notes:
 ```bash
 python3 ${SKILL_DIR}/scripts/svg_quality_checker.py <project_path>
 ```
-
-**Retry loop (max 3 attempts)**:
-
-| Attempt | Action |
-|---------|--------|
-| **1** | Run checker. `0 errors` → proceed to Logic Construction Phase |
-| **2** | For each failing file: re-read `spec_lock.md`, regenerate **only that page** in-context (no sub-agents). Re-run checker |
-| **3** | Same as attempt 2 for any remaining failures. Re-run checker |
-| **Exhausted** | ⛔ STOP. Report to user: failing filenames + full error text. Do NOT proceed to Logic Construction until user authorises |
-
+- Any `error` (banned SVG features, viewBox mismatch, spec_lock drift, etc.) MUST be fixed before proceeding — return to Visual Construction, regenerate that page, re-run check.
 - `warning` entries (low-res image, non-PPT-safe font tail, etc.): fix when straightforward, otherwise acknowledge and release.
 - Run against `svg_output/` (not after `finalize_svg.py` — finalize rewrites SVG and masks violations).
-- ⚠️ SVG regeneration MUST happen in the current main-agent context — Rule #6 prohibits sub-agent delegation.
 
 **Logic Construction Phase**: generate speaker notes → `<project_path>/notes/total.md`
 
 **✅ Checkpoint — Confirm all SVGs and notes are fully generated and quality-checked. Proceed directly to Step 7 post-processing**:
 ```markdown
 ## ✅ Executor Phase Complete
+- [x] Live preview started and kept available at the reported URL
 - [x] All SVGs generated to svg_output/
 - [x] svg_quality_checker.py passed (0 errors)
 - [x] Speaker notes generated at notes/total.md
 ```
 
 > **Chart pages?** If this deck contains data charts (bar / line / pie / radar / etc.), run the standalone [`verify-charts`](workflows/verify-charts.md) workflow before Step 7 to calibrate coordinates. AI models routinely introduce 10–50 px errors when mapping data to pixel positions; verify-charts eliminates that class of error. Skip if no chart pages.
+
+> **Visual self-check (opt-in)?** If the user explicitly asked for a per-page visual re-pass on the SVGs ("跑一下视觉自检 / 视觉回看", "visual review", "check pages visually", etc.), run the standalone [`visual-review`](workflows/visual-review.md) workflow before Step 7. Do NOT run it by default and do NOT recommend it based on inferred model capability or deck size — trigger is user request only.
 
 ---
 
@@ -342,7 +461,7 @@ python3 ${SKILL_DIR}/scripts/svg_quality_checker.py <project_path>
 
 🚧 **Image readiness GATE** (when Step 5 left ai rows in `Needs-Manual`): every expected file must exist at `project/images/<filename>` before running 7.1.
 
-> If files are missing: PAUSE, list the missing filenames, point the user to `images/image_prompts.md` (each `### Image N:` block is paste-ready for ChatGPT / Gemini / Midjourney) and the required placement `project/images/<filename>`. Resume Step 7.1 only after all expected files are in place. `finalize_svg.py` and `svg_to_pptx.py` do not detect missing files at this layer — proceeding with gaps produces a deck with broken image references.
+> If files are missing: PAUSE, list the missing filenames, point the user to `images/image_prompts.md` (each `### Image N:` block is paste-ready for ChatGPT / Gemini / Midjourney; auto-generated from `image_prompts.json`) and the required placement `project/images/<filename>`. Resume Step 7.1 only after all expected files are in place. `finalize_svg.py` and `svg_to_pptx.py` do not detect missing files at this layer — proceeding with gaps produces a deck with broken image references.
 
 > ⚠️ Run the three sub-steps **one at a time** — each must complete successfully before the next.
 > ❌ **NEVER** combine them into a single code block or shell invocation.
@@ -362,25 +481,41 @@ python3 ${SKILL_DIR}/scripts/finalize_svg.py <project_path>
 **Step 7.3** — Export PPTX (embeds speaker notes by default):
 ```bash
 python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
-# Output:
-#   exports/<project_name>_<timestamp>.pptx           ← main native pptx (reads svg_output/, high fidelity)
-#   backup/<timestamp>/<project_name>_svg.pptx        ← SVG preview pptx (reads svg_final/)
-#   backup/<timestamp>/svg_output/                    ← Executor SVG source backup
+# Output (default-flow mode):
+#   exports/<project_name>_<timestamp>.pptx           ← native pptx (canonical output, reads svg_output/)
+#   backup/<timestamp>/svg_output/                    ← Executor SVG source backup (always written)
+#
+# Add --svg-snapshot to additionally emit the SVG-image preview pptx alongside the native pptx:
+#   exports/<project_name>_<timestamp>_svg.pptx      ← SVG preview pptx (reads svg_final/)
 ```
 
-> The two products now read from different sources by design: native pptx
-> consumes `svg_output/` so the converter can preserve high-fidelity primitives
-> (icon `<use>` placeholders, image `preserveAspectRatio` → `srcRect`, rounded
-> rect `rx/ry` → `prstGeom roundRect`). The legacy/preview pptx still consumes
-> `svg_final/` because PowerPoint's internal SVG parser cannot handle those
-> primitives. Pass `-s output` or `-s final` to force a single source on both
-> products if you need the older single-source behaviour.
+> The native pptx consumes `svg_output/` directly so the converter can preserve
+> high-fidelity primitives (icon `<use>` placeholders, image `preserveAspectRatio`
+> → `srcRect`, rounded rect `rx/ry` → `prstGeom roundRect`). The `svg_output/`
+> snapshot in `backup/<timestamp>/` is always written so the project can be
+> re-exported from frozen SVG sources without re-running the LLM. The SVG-rendered
+> preview pptx is opt-in via `--svg-snapshot` — live preview already provides the
+> SVG visual reference, so it's only needed when you want a self-contained file
+> to share. Pass `-s output` or `-s final` to force a single source if you need it.
+
+> **Paragraph editability vs line fidelity** — by default every dy-stacked line is
+> its own PowerPoint text frame, preserving exact SVG layout. Add `--merge-paragraphs`
+> only when the user explicitly asks for an editable / wrap-friendly export (e.g.
+> "I want to edit the abstract as one block", "make text boxes resizable / reflow"):
+> mergeable paragraph blocks collapse into one editable text frame with multiple
+> `<a:p>`, at the cost of PowerPoint re-wrapping inside each box. Default off keeps
+> pixel-fidelity; turn it on per the user's request, not on your own judgement.
 
 **Optional animation flags** (the defaults already enable rich entrance animations — adjust only when the user asks for something different):
 - `-t <effect>` — page transition. Default `fade`. Options: `fade` / `push` / `wipe` / `split` / `strips` / `cover` / `random` / `none`.
-- `-a <effect>` — per-element entrance animation. Default `mixed` (auto-vary across the deck). Pass `none` to disable, or pick a specific effect like `fade`. Requires top-level `<g id="...">` groups (already required by Executor).
+- `-a <effect>` — per-element entrance animation. Default `auto` (map effect from group id: chart→wipe, card-/step-/pillar-→fly, title/takeaway→fade; image-like ids `hero` / `figure-` / `image` / `img-` / `kpi` cycle a richer pool — zoom / dissolve / circle / box / diamond / wheel — so multiple images vary across the deck). Pass `none` to disable, a specific effect like `fade`, or `mixed` for the legacy 16-effect cycle. Requires top-level `<g id="...">` groups (already required by Executor).
 - `--animation-trigger {on-click,with-previous,after-previous}` — Start mode (matches PowerPoint's animation-pane Start dropdown). Default `after-previous` (click-free cascade; pace via `--animation-stagger`). Use `on-click` for presenter-paced reveals, or `with-previous` for all-at-once.
+- `--animation-config <path>` — optional object-level sidecar. Default: `<project_path>/animations.json` when present.
 - `--auto-advance <seconds>` — kiosk-style auto-play.
+
+**Optional custom animations** (only when the user asks to tune animation order/effects/timing for specific objects):
+
+Run the standalone [`customize-animations`](workflows/customize-animations.md) workflow. Default export already has global entrance animation; do not create `animations.json` unless object-level customization was requested.
 
 **Optional recorded narration** (only when the user asks for narrated/video export):
 
@@ -394,7 +529,9 @@ Full effect list, anchor logic, and limits: [`references/animations.md`](referen
 > ❌ **NEVER** force `-s output` for the legacy/preview pptx (PowerPoint's internal SVG parser drops icons and rounded corners). The default auto-split already gives native the high-fidelity source it needs without touching legacy.
 > ❌ **NEVER** use `--only` (it suppresses one of the two output files)
 
-> Post-export iteration: whenever the user asks to change anything on a generated slide ("改一下", "调字号", "那里看着不对", "把图片换大点"), the [`visual-edit`](workflows/visual-edit.md) workflow is available — surface it as an option. If the user describes the change with enough specificity to apply directly ("第 3 页副标题字号改 32"), edit the SVG directly instead; if they're vaguely pointing at "somewhere" on the deck, run the workflow.
+> **Post-export annotation window**: the preview service from Step 6 typically remains running after export. If the user submitted annotations in the browser (during Executor or after export) and now asks to apply them — they may quote the browser prompt (`Annotations saved. ... apply my annotations`), say "apply my annotations" / "应用注解" / equivalent — run [`live-preview`](workflows/live-preview.md) Step 2 to apply and re-export. Annotations submitted during generation are also handled here, not earlier.
+
+> **Preview not running?** Any time the user mentions "live preview", "preview", "看效果", or wants to select/click a slide element and the service is not running, run [`live-preview`](workflows/live-preview.md) Step 1 to start it. If the service is already running, just point them at the URL — do not restart.
 
 ---
 
@@ -416,7 +553,8 @@ Before switching roles, **MUST first read** the corresponding reference file. Ou
 |----------|------|
 | Shared technical constraints | `references/shared-standards.md` |
 | Canvas format specification | `references/canvas-formats.md` |
-| Image layout specification | `references/image-layout-spec.md` |
+| Image-text layout patterns (Primary structures + Modifier layers — combine freely) | `references/image-layout-patterns.md` |
+| Image layout sizing (math for side-by-side container dimensions) | `references/image-layout-spec.md` |
 | SVG image embedding | `references/svg-image-embedding.md` |
 | Icon library | `templates/icons/README.md` |
 

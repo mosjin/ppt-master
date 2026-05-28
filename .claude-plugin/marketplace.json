@@ -8,8 +8,23 @@
     {
       "name": "ppt-master",
       "source": "./",
-      "description": "AI-driven SVG+PPTX generation. v2.7.5: page_order.txt manifest ordering in pptx_discovery — decouples deck page order from filename sort so frame-id-named SVGs (F06b.svg) insert without renumbering; backward compatible (no manifest = legacy sorted()). v2.7.4: /ppt-master:upgrade path fix (marketplaces/ + /plugin install). v2.7.3: parse_hex_color accepts CSS named colors + rgb() (fixes eduForge #19 black-PPT bug). v2.7.0: SVG Quality Check Gate max-3 self-correcting retry loop (WCAG AA 4.5:1, font-size, placeholder checks). Upstream synced to hugohe3 v2.7.0 commit 2bb651c8.",
-      "version": "2.7.5"
+      "description": "AI-driven SVG+PPTX generation. **v2.8.0** (synced upstream hugohe3): LaTeX formula rendering, brand presets, topic-research/resume-execute workflows, richer object animations. **mosjin fork adds**: page_order.txt manifest ordering in pptx_discovery (frame-id-named SVGs insert without renumbering; backward compatible) + `--absolute-links` (file:/// URLs for WPS/PowerPoint hyperlink resolution). Earlier: v2.7.x parse_hex_color CSS-named-colors, SVG quality gate. Run `pip install -r requirements.txt` in the installed plugin dir for Python post-processing.",
+      "version": "2.8.0",
+      "homepage": "https://github.com/mosjin/ppt-master",
+      "repository": "https://github.com/mosjin/ppt-master",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "pptx",
+        "presentation",
+        "powerpoint",
+        "svg",
+        "drawingml",
+        "ai",
+        "skill",
+        "office",
+        "document-conversion"
+      ]
     }
   ]
 }
