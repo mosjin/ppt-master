@@ -125,9 +125,34 @@ Or run PowerShell as Administrator.
 pip install -r requirements.txt --proxy http://your-proxy:port
 ```
 
-### `ModuleNotFoundError`
+### `ModuleNotFoundError: No module named 'pptx'` (or any other module)
 
-`pip` installed to a different Python. Use `python -m pip install -r requirements.txt` to match.
+**Cause A — `pip` installed to a different Python.** Use:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+**Cause B — `python3` and `python` point to different Python installs (common on Windows with Microsoft Store).** Run:
+
+```powershell
+where python3
+where python
+```
+
+If the paths differ, install into the same Python that the scripts use:
+
+```powershell
+python3 -m pip install -r requirements.txt
+```
+
+Verify after:
+
+```powershell
+python3 -c "import pptx; print('OK:', pptx.__version__)"
+```
+
+> **Why this happens**: Windows may have a Microsoft Store "stub" for `python3.exe` (which installs a separate Python if clicked) alongside a real Python you installed from python.org. The SKILL.md and CLAUDE.md scripts use `python3`, so both must share the same packages. The safest fix is: always use `python -m pip install` OR `python3 -m pip install` — never bare `pip` — to ensure you're installing into the right interpreter.
 
 ### `import fitz` fails
 

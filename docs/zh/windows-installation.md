@@ -132,9 +132,34 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 pip install -r requirements.txt --proxy http://your-proxy:port
 ```
 
-### `ModuleNotFoundError`
+### `ModuleNotFoundError: No module named 'pptx'`（或其他模块）
 
-`pip` 装到了另一个 Python 环境。用 `python -m pip install -r requirements.txt` 确保对应同一个。
+**原因 A — `pip` 装到了另一个 Python 环境。** 改用：
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+**原因 B — `python3` 和 `python` 指向不同的 Python（Windows 多 Python 环境常见问题）。** 运行：
+
+```powershell
+where python3
+where python
+```
+
+如果路径不同，需要把依赖安装到脚本实际使用的 Python（脚本用 `python3`）：
+
+```powershell
+python3 -m pip install -r requirements.txt
+```
+
+安装后验证：
+
+```powershell
+python3 -c "import pptx; print('OK:', pptx.__version__)"
+```
+
+> **为什么会发生**：Windows 可能同时存在 Microsoft Store 的 `python3.exe`（点击后会装一个独立 Python）和你从 python.org 安装的 Python。SKILL.md 和 CLAUDE.md 里的脚本使用 `python3` 命令，所以两个环境必须共享同一套包。最安全的做法：始终用 `python -m pip install` 或 `python3 -m pip install`，而不是裸 `pip install`。
 
 ### `import fitz` 失败
 
