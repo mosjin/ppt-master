@@ -127,10 +127,10 @@ pip install -r requirements.txt --proxy http://your-proxy:port
 
 ### `ModuleNotFoundError: No module named 'pptx'` (or any other module)
 
-**Cause A — `pip` installed to a different Python.** Use:
+**Cause A — `pip` targets a different Python than the one running the scripts.** This project's scripts invoke `python3`, so install with that *same* interpreter — never bare `pip`, and don't assume `python` == `python3`:
 
 ```powershell
-python -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 **Cause B — `python3` and `python` point to different Python installs (common on Windows with Microsoft Store).** Run:
@@ -152,7 +152,7 @@ Verify after:
 python3 -c "import pptx; print('OK:', pptx.__version__)"
 ```
 
-> **Why this happens**: Windows may have a Microsoft Store "stub" for `python3.exe` (which installs a separate Python if clicked) alongside a real Python you installed from python.org. The SKILL.md and CLAUDE.md scripts use `python3`, so both must share the same packages. The safest fix is: always use `python -m pip install` OR `python3 -m pip install` — never bare `pip` — to ensure you're installing into the right interpreter.
+> **Why this happens**: Windows may have a Microsoft Store "stub" for `python3.exe` (which installs a separate Python if clicked) alongside a real Python you installed from python.org. The SKILL.md and CLAUDE.md scripts use `python3`, so both must share the same packages. The safest fix is: install with the *exact* interpreter the scripts run (`python3 -m pip install ...`) — never bare `pip`, and never assume `python` and `python3` resolve to the same install.
 
 ### `import fitz` fails
 
