@@ -42,7 +42,39 @@ def find_svg_files(
         else:
             return [], ''
 
-    return sorted(svg_dir.glob('*.svg')), dir_name
+    svgs = list(svg_dir.glob('*.svg'))
+    return _order_svgs(svgs, svg_dir, project_path), dir_name
+
+
+def _order_svgs(svgs: list[Path], svg_dir: Path, project_path: Path) -> list[Path]:
+    """Order pages by an explicit manifest if present, else by filename.
+
+    Manifest (``page_order.txt`` in ``svg_dir`` or ``project_path``) lists one
+    page per line, as either an SVG filename (``F06b.svg``) or its stem
+    (``F06b``); blank lines and ``#`` comments are ignored. This decouples page
+    order from filename sort, so frame-id-named SVGs (``F06b.svg``) can be
+    inserted without renumbering the whole deck. Manifest entries with no
+    matching file are skipped; SVG files absent from the manifest are appended
+    in filename order. With no manifest, behaviour is the legacy ``sorted()``.
+    """
+    for manifest in (project_path / 'page_order.txt', svg_dir / 'page_order.txt'):
+        if manifest.exists():
+            by_stem = {p.stem: p for p in svgs}
+            by_name = {p.name: p for p in svgs}
+            ordered: list[Path] = []
+            used: set[Path] = set()
+            for line in manifest.read_text(encoding='utf-8').splitlines():
+                entry = line.strip()
+                if not entry or entry.startswith('#'):
+                    continue
+                key = entry[:-4] if entry.endswith('.svg') else entry
+                p = by_stem.get(key) or by_name.get(entry)
+                if p is not None and p not in used:
+                    ordered.append(p)
+                    used.add(p)
+            ordered.extend(sorted(p for p in svgs if p not in used))
+            return ordered
+    return sorted(svgs)
 
 
 def find_notes_files(
