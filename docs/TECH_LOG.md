@@ -4,6 +4,27 @@
 
 ---
 
+## 2026-06-23: 版本号统一的隐藏真源 + 单面板守卫验证方法论
+
+### Problem
+v2.9.0 release 要统一版本号，但 root `SKILL.md` / `.gemini/skills/ppt-master/SKILL.md` 编辑后版本被反复重置回 2.6.0。
+
+### Root Cause
+1. **root + .gemini SKILL.md 是 `sync_skill_root.py` 生成的副本**，PostToolUse hook 在编辑 canonical 时自动 regen 覆盖手改。
+2. **副本的 version 真源是 `sync_skill_root.py:51` 内嵌的 frontmatter 模板常量**（硬编码 2.6.0），`grep version` 在脚本里 0 命中（因为是模板字符串非逻辑），不改这里副本永远回退。
+3. 版本串散落 6+ 处：canonical SKILL.md、root SKILL.md、.gemini SKILL.md、sync_skill_root.py 模板、README×2 badge、marketplace.json。
+
+### Fix
+改 `sync_skill_root.py:51` 模板版本 → 跑 `python scripts/sync_skill_root.py --apply` 重生成副本 → 副本带新版本且与 canonical body 同步（sync 测试过）。其余 5 处手改。git commit 用 `--author="mosjin <mosjin@gmail.com>"` 确保 author+committer 非 OpenClaw Backup Bot。
+
+### Lessons
+- **Rule**: 改 sync_skill_root 生成的文件（root/.gemini SKILL.md）的版本，必须改脚本内的模板常量，不能直接改生成物（会被 hook 回退）。
+- **Rule**: 版本 bump 前先 `grep -rn 'version' <所有候选>` 列全真源；生成物 + 生成器模板 + README badge + marketplace.json 都要覆盖。
+- **Rule**: 缺陷修复验证用「检测器 + 真实语料双向」——守卫跑全库证稳定性（7665 帧 0 崩溃）+ 命中旧缺陷帧 + 新标准语料（v12 1778 帧 99.9% 干净）证预防生效。consumer 升级标准本身（v11 巨型单面板 → v12 多卡填充）即闭环证据，无需额外 regen。
+- **Why**: 散落的版本真源 + 生成物回退是 fork 同步后最易翻车的隐藏坑。
+
+---
+
 ## 2026-06-22: upstream sync — rebase 遇大量冲突改用 merge
 
 ### Problem

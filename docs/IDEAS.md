@@ -4,6 +4,13 @@
 
 ---
 
+## 单面板版面（#11 follow-up）
+
+- [ ] 批量 regen ~21 个 v11 旧 deck（dated ≤2026-06-03，svg_output 仍带巨型单面板缺陷）到 v12 多卡填充标准 — 当前非阻塞，下次各自 regen 自然清；若要主动清需逐 deck 走 pipeline
+- [ ] 守卫 underfill 检测目前仅基于 `<text>` 基线 — 含大图/图表（image/path 为主、少量 caption）的单面板可能轻度误报；若 image-dominant 单面板变常见，给检测加「面板内 image/path 面积占比」豁免
+
+---
+
 ## Gemini CLI 集成
 
 - [ ] 添加 `.gitattributes`（`*.md text eol=lf`、`*.py text eol=lf`）— 防止 Windows autocrlf 导致的 CRLF 问题从根源上复发，code-review 已建议
