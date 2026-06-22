@@ -1,5 +1,25 @@
 # CHANGELOG — ppt-master (mosjin fork)
 
+## [sync] — 2026-06-22
+
+### 🔄 Sync: 合并 upstream v2.8–v2.11（131 commits）
+
+**Merge commit**: `9b190904`
+
+**关键新功能（来自 upstream hugohe3/ppt-master）：**
+- `extract_svg_assets.py` — SVG 资源提取工具
+- `pptx_intake.py` — 多 PPTX 导入 + 素材发散确认
+- `image_search.py` — 并发 `--batch` 模式
+- `references/modes/` — 新增 5 种演示模式（briefing/narrative/pyramid/showcase/instructional）
+- `references/visual-styles/` — 新增 15 种视觉风格目录
+- `references/executor-*.md` 迁移至 `modes/`
+- `svg_to_pptx`: `<a>` 标签透明组渲染、文本语言逐 run 检测、text_height 收紧（1.5x→1.2x）
+- `source_to_md`: 各 converter 统一输出 `image_manifest.json`
+
+**本地 commit 全部保留**（windows-docs 修复 + svg hyperlink features）
+
+---
+
 ## [dev] — 2026-05-06
 
 ### 🚀 Feature: Gemini CLI workspace skill + sync_skill_root 全面重构

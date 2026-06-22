@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-06-22: upstream sync — rebase 遇大量冲突改用 merge
+
+### Problem
+fork 落后 upstream 131 commits（v2.8–v2.11）。尝试 `git rebase upstream/main`，`drawingml_elements.py` 等核心脚本持续冲突，每个 patch 都要手解。
+
+### Root Cause
+本地有 **8 个独立 commit**（6 个 svg/hyperlink feature commit + 2 个 windows-docs commit），均改动了 upstream 同期也在改的 `drawingml_elements.py` / `drawingml_converter.py`。Rebase 逐 commit 重放，每一个都触发相同文件的三路合并。
+
+### Fix
+`git rebase --abort` → `git merge upstream/main`。Merge 一次性解决最终状态，`recursive` 策略自动合并，无冲突，产生单个 merge commit `9b190904`。
+
+### Lessons
+- **Rule**: fork 落后 upstream > 50 commits 且本地有多个 feature commit 时，优先用 `merge`，不用 `rebase`
+- **Why**: rebase 逐 commit 重放，每个 patch 独立做三路合并，同文件冲突重复出现；merge 只解一次最终状态
+- **Rule**: 冲突解析时注意变量名一致性——upstream patch 把 `preserve_space` 改名为 `preserve`，但函数作用域外的调用点未同步改，取 HEAD 版本避免 NameError
+
+---
+
 ## 2026-05-17: /ppt-master:upgrade — 路径写错 + 缓存刷新缺失（eduForge #23 follow-up）
 <!-- 中文：## 2026-05-17：/ppt-master:upgrade 子技能的两处隐藏 bug —— 编写时未真机测试 -->
 
