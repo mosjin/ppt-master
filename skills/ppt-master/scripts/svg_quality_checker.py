@@ -1083,6 +1083,10 @@ class SVGQualityChecker:
             )
 
         # --- 3. content underfills the panel (top-loaded, large bottom gap) ---
+        # NOTE: underfill keys on <text> baselines only. A legitimate single panel
+        # holding a large diagram/image with one top caption (small top_gap, large
+        # bottom_gap, few/no text rows below) can warn spuriously. Acceptable at
+        # warning severity; revisit if image-dominant single panels become common.
         top_gap = text_ys[0] - p_top
         bottom_gap = p_bottom - text_ys[-1]
         if top_gap < 60 and bottom_gap > 0.30 * p_h:
