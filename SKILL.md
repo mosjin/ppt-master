@@ -12,7 +12,7 @@ compatibility: >
   Then: pip install -r "$(gemini skills path mosjin/ppt-master)/requirements.txt"
 metadata:
   author: mosjin
-  version: "2.6.0"
+  version: "2.9.0"
   upstream: hugohe3/ppt-master
   integration: Gemini CLI (root SKILL.md + .gemini/skills/ppt-master/SKILL.md)
   note: AUTO-GENERATED — edit skills/ppt-master/SKILL.md, run sync_skill_root.py --apply

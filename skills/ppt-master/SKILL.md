@@ -7,7 +7,7 @@ description: >
   "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".
 metadata:
   author: mosjin
-  version: "2.8.0"
+  version: "2.9.0"
   repository: https://github.com/mosjin/ppt-master
 ---
 

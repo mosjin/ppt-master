@@ -8,8 +8,8 @@
     {
       "name": "ppt-master",
       "source": "./",
-      "description": "AI-driven SVG+PPTX generation. **v2.8.0** (synced upstream hugohe3): LaTeX formula rendering, brand presets, topic-research/resume-execute workflows, richer object animations. **mosjin fork adds**: page_order.txt manifest ordering in pptx_discovery (frame-id-named SVGs insert without renumbering; backward compatible) + `--absolute-links` (file:/// URLs for WPS/PowerPoint hyperlink resolution). Earlier: v2.7.x parse_hex_color CSS-named-colors, SVG quality gate. Run `pip install -r requirements.txt` in the installed plugin dir for Python post-processing.",
-      "version": "2.8.0",
+      "description": "AI-driven SVG+PPTX generation. **v2.9.0** (synced upstream hugohe3 v2.11): pptx_intake multi-deck intake, presentation modes (briefing/narrative/pyramid/showcase/instructional), visual-styles catalog, LaTeX formula rendering, brand presets, topic-research/resume-execute workflows, richer object animations. **mosjin fork adds**: single content-panel layout guard in svg_quality_checker (#11 — flags empty header strip / first-line clip / underfilled panel) + page_order.txt manifest ordering in pptx_discovery (frame-id-named SVGs insert without renumbering; backward compatible) + `--absolute-links` (file:/// URLs for WPS/PowerPoint hyperlink resolution). Run `pip install -r requirements.txt` in the installed plugin dir for Python post-processing.",
+      "version": "2.9.0",
       "homepage": "https://github.com/mosjin/ppt-master",
       "repository": "https://github.com/mosjin/ppt-master",
       "license": "MIT",
