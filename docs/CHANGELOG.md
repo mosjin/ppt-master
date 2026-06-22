@@ -1,5 +1,21 @@
 # CHANGELOG — ppt-master (mosjin fork)
 
+## [2.9.0] — 2026-06-22
+
+### 🚀 Release: v2.9.0（客户发布版）
+
+统一全部版本串到 `2.9.0`（fork 自己版本线，上版 2.8.0）：
+- `SKILL.md`（root）、`skills/ppt-master/SKILL.md`（canonical）、`.gemini/skills/ppt-master/SKILL.md`
+- `scripts/sync_skill_root.py` 内嵌 frontmatter 模板常量（root/.gemini 版本真源，原硬编码 2.6.0）
+- `README.md` / `README_CN.md` badge（v2.11.0 → v2.9.0，链接改指 mosjin/ppt-master releases）
+- `.claude-plugin/marketplace.json` version + description
+
+打包内容：
+- upstream hugohe3 v2.11 内容同步（pptx_intake / 演示模式 / visual-styles / LaTeX / brand 预设）
+- #11 单面板版面守卫（`svg_quality_checker._check_single_panel_layout`）
+
+发布：commit `ff7ab1f8`，tag `v2.9.0`（origin），author/committer = mosjin。
+
 ## [sync] — 2026-06-22
 
 ### 🔄 Sync: 合并 upstream v2.8–v2.11（131 commits）
