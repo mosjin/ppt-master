@@ -258,6 +258,14 @@ The AI handles everything — content analysis, visual design, SVG generation, a
 
 > **Already have a `.pptx` you want to reuse?** Hand the AI that deck plus your material and ask it to "fill this deck with the new content" — it fills text, table, and chart data into your existing design and exports only the pages you pick, staying natively editable. See the [FAQ](./docs/faq.md) and [template-fill workflow](./skills/ppt-master/workflows/template-fill-pptx.md).
 
+> **Want to beautify / re-layout an existing `.pptx` while keeping the content?** Hand the AI that deck and say "beautify this PPT" — it redesigns the layout while preserving all content verbatim, one source slide per output page. See the [beautify workflow](./skills/ppt-master/workflows/beautify-pptx.md).
+
+> **Starting from a topic with no source material?** Just tell the AI your topic — it researches the web first, then generates the deck. No PDF or file needed.
+
+> **Want to review the design spec before slides are generated?** Ask the AI to "refine the spec first" — it produces the full spec and pauses for your review before any SVG generation begins.
+
+> **Resuming a large deck in a fresh chat?** Tell the AI "continue projects/&lt;name&gt;" — it re-enters Phase B (SVG + export) without repeating Phase A.
+
 > **AI lost context?** Ask it to read `skills/ppt-master/SKILL.md`.
 
 > **Something went wrong?** Check the **[FAQ](./docs/faq.md)** — it covers model selection, layout issues, export problems, and more. Continuously updated from real user reports.
@@ -296,6 +304,8 @@ PPT Master reads the current process environment first, then the first `.env` fo
 | 💼 | [Examples](./examples/README.md) | All example projects |
 | 🏗️ | [Technical Design](./docs/technical-design.md) | Architecture, design philosophy, why SVG |
 | ❓ | [FAQ](./docs/faq.md) | Model selection, cost, layout troubleshooting, custom templates |
+| 🎨 | [Brand Identity](./skills/ppt-master/workflows/create-brand.md) | Extract palette, fonts, and assets from brand materials for consistent decks |
+| ✨ | [Beautify Existing Deck](./skills/ppt-master/workflows/beautify-pptx.md) | Re-layout an existing .pptx while preserving all content verbatim |
 
 ---
 

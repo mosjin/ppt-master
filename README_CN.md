@@ -266,6 +266,14 @@ AI 全程处理——内容分析、视觉设计、SVG 生成、PPTX 导出。
 
 > **已有一份想复用的 `.pptx`？** 把那份 deck 连同素材给 AI，说「套模板」即可——它会把新内容（文字、表格、图表数据）填进你现有的设计，只导出你挑选的页面，且保持原生可编辑。详见 [常见问题](./docs/zh/faq.md) 与 [套模板工作流](./skills/ppt-master/workflows/template-fill-pptx.md)。
 
+> **想美化 / 重排版一份现有 `.pptx` 同时保留所有内容？** 把那份 deck 给 AI，说「把这份 PPT 美化一下」——它会重新设计排版，内容原文保留，原稿一页对应输出一页。详见 [美化工作流](./skills/ppt-master/workflows/beautify-pptx.md)。
+
+> **只有话题，没有素材？** 直接告诉 AI 你的话题——它会先做网络调研，再生成 deck。无需 PDF 或文件。
+
+> **想在生成 slides 前先审阅设计规范？** 告诉 AI「先 refine 一下规格」——它会输出完整 spec 并暂停等待你确认，之后再开始生成。
+
+> **大型 deck 中途换了 chat？** 告诉 AI「继续生成 projects/&lt;项目名&gt;」——它直接进入 Phase B（SVG 生成 + 导出），不重跑 Phase A。
+
 > **AI 迷失上下文？** 让它先读 `skills/ppt-master/SKILL.md`。
 
 > **遇到问题？** 查看 **[常见问题](./docs/zh/faq.md)** — 涵盖模型选择、排版问题、导出异常等，基于真实用户反馈持续更新。
@@ -304,6 +312,8 @@ PPT Master 会优先读取当前进程环境变量，然后按顺序读取第一
 | 💼 | [示例](./examples/README.md) | 所有示例项目 |
 | 🏗️ | [技术路线](./docs/zh/technical-design.md) | 架构、设计哲学、为什么选 SVG |
 | ❓ | [常见问题](./docs/zh/faq.md) | 模型选择、费用、排版问题排查、自定义模板 |
+| 🎨 | [品牌规范](./skills/ppt-master/workflows/create-brand.md) | 从 Logo、品牌官网或 deck 中提取调色板、字体、素材，保持风格一致 |
+| ✨ | [美化现有 Deck](./skills/ppt-master/workflows/beautify-pptx.md) | 重新排版已有 .pptx，内容原文不动 |
 
 ---
 
