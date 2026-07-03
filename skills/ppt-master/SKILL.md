@@ -669,6 +669,13 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 > layout-tight page must keep every dy-stacked line as its own text frame. The
 > merge detector is conservative; mixed-layout text falls back to per-line frames.
 
+> **Native table/chart objects** — explicit `data-pptx-native="table|chart"`
+> markers are dormant by default. Add `--native-objects` only when the user
+> explicitly wants PowerPoint-editable native tables/charts and accepts that
+> those objects may render differently across PowerPoint / Keynote /
+> LibreOffice / WPS. Without the flag, marked groups export through their SVG
+> fallback children like ordinary SVG content.
+
 **Optional animation flags** (page transitions are on by default; per-element entrance is off by default — turn it on only when the user asks for it):
 - `-t <effect>` — page transition. Default `fade`. Options: `fade` / `push` / `wipe` / `split` / `strips` / `cover` / `random` / `none`.
 - `-a <effect>` — per-element entrance animation. **Default `none`** — pages appear as a whole, no auto-firing element builds (the unsolicited cascade reads as the "AI deck" tell). Opt in with `auto` (map effect from group id: chart→wipe, card-/step-/pillar-→fly, title/takeaway→fade; image-like ids `hero` / `figure-` / `image` / `img-` / `kpi` cycle a richer pool — zoom / dissolve / circle / box / diamond / wheel — so multiple images vary across the deck), a specific effect like `fade`, or `mixed` for the legacy 16-effect cycle. Requires top-level `<g id="...">` groups (already required by Executor).
