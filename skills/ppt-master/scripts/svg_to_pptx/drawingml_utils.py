@@ -356,11 +356,19 @@ def _extract_inheritable_styles(elem: ET.Element) -> dict[str, str]:
         val = elem.get(attr)
         if val is not None:
             styles[attr] = val
+    styles.update({
+        attr: val
+        for attr, val in parse_inline_style(elem.get('style')).items()
+        if attr in INHERITABLE_ATTRS
+    })
     return styles
 
 
 def _get_attr(elem: ET.Element, attr: str, ctx: ConvertContext) -> str | None:
     """Get effective attribute: element's own value first, then inherited."""
+    style_val = parse_inline_style(elem.get('style')).get(attr)
+    if style_val is not None:
+        return style_val
     val = elem.get(attr)
     if val is not None:
         return val
@@ -449,41 +457,59 @@ _CSS_NAMED_COLORS: dict[str, str] = {
 }
 
 
-def parse_hex_color(color_str: str) -> str | None:
-    """Parse SVG color value to a 6-digit uppercase hex string.
+def parse_inline_style(style_str: str | None) -> dict[str, str]:
+    """Parse an SVG inline style declaration into ``property: value`` pairs."""
+    styles: dict[str, str] = {}
+    if not style_str:
+        return styles
+    for part in style_str.split(';'):
+        if ':' not in part:
+            continue
+        name, value = part.split(':', 1)
+        name = name.strip().lower()
+        value = value.strip()
+        if name and value:
+            styles[name] = value
+    return styles
 
-    Accepts:
-    - `#RRGGBB` (canonical 6-digit hex)
-    - `#RGB` (3-digit shorthand, expanded to 6 digits)
-    - CSS3 named colors (`white`, `black`, `red`, ..., `rebeccapurple`)
-    - `rgb(R, G, B)` with integer components 0-255 (functional notation)
 
-    Returns the 6-digit uppercase hex without leading `#`, or `None` if the
-    input cannot be parsed.
+def _parse_color_channel(raw: str) -> int:
+    raw = raw.strip()
+    if raw.endswith('%'):
+        value = float(raw[:-1]) * 255.0 / 100.0
+    else:
+        value = float(raw)
+    return max(0, min(255, int(round(value))))
 
-    NOTE: The named-color path was added to fix eduForge #19: `fill="white"`
-    used to return `None` from this function, which forced callers to fall
-    back to `'000000'` (black). On dark-themed slides every white text run
-    rendered as black-on-black — entire pages appeared blank.
-    """
+
+def parse_hex_color(color_str: str | None) -> str | None:
+    """Parse SVG color values to 'RRGGBB'. Returns None on failure."""
     if not color_str:
         return None
     color_str = color_str.strip()
-    if not color_str:
-        return None
+    named = _CSS_NAMED_COLORS.get(color_str.lower())
+    if named is not None or color_str.lower() in _CSS_NAMED_COLORS:
+        return named
 
-    # Functional notation: rgb(R, G, B) / rgb(R G B)
-    if color_str.lower().startswith('rgb('):
-        inner = color_str[4:].rstrip(')').replace(',', ' ').split()
-        if len(inner) == 3:
+    rgb_match = re.match(r'rgba?\((.+)\)$', color_str, flags=re.IGNORECASE)
+    if rgb_match:
+        channels = re.findall(r'[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?%?', rgb_match.group(1))
+        if len(channels) >= 3:
             try:
-                r, g, b = (max(0, min(255, int(float(v)))) for v in inner)
+                r, g, b = (_parse_color_channel(ch) for ch in channels[:3])
                 return f'{r:02X}{g:02X}{b:02X}'
-            except (ValueError, TypeError):
+            except ValueError:
                 return None
+
+    if color_str.startswith('#'):
+        hex_part = color_str[1:]
+        if len(hex_part) == 3:
+            hex_part = ''.join(c * 2 for c in hex_part)
+        if len(hex_part) == 6 and all(c in '0123456789abcdefABCDEF' for c in hex_part):
+            return hex_part.upper()
         return None
 
-    # Hex notation: #RGB or #RRGGBB
+    return None
     if color_str.startswith('#'):
         hex_part = color_str[1:]
         if len(hex_part) == 3:
