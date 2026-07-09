@@ -158,6 +158,7 @@ def create_slide_rels_xml(
     svg_filename: str,
     use_compat_mode: bool = True,
     link_rels: list[dict] | None = None,
+    slide_layout_target: str = "../slideLayouts/slideLayout1.xml",
 ) -> str:
     """Create slide relationship file XML.
 
@@ -168,6 +169,7 @@ def create_slide_rels_xml(
         svg_filename: SVG filename.
         use_compat_mode: Whether to use compatibility mode.
         link_rels: Optional list of {rid, href} for hyperlink relationships.
+        slide_layout_target: Target for the slide's actual layout part.
     """
     extra = ''
     if link_rels:
@@ -181,13 +183,13 @@ def create_slide_rels_xml(
     if use_compat_mode:
         return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="{slide_layout_target}"/>
   <Relationship Id="{png_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{png_filename}"/>
   <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>{extra}
 </Relationships>'''
     else:
         return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="{slide_layout_target}"/>
   <Relationship Id="{svg_rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{svg_filename}"/>{extra}
 </Relationships>'''
