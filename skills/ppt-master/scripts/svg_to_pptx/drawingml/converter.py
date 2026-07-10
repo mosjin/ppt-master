@@ -11,6 +11,7 @@ from xml.etree import ElementTree as ET
 from resource_paths import icon_search_dirs_for_svg
 
 from .context import ConvertContext, ShapeResult
+from .theme_colors import ThemeColorSpec
 from .theme_fonts import ThemeFontSpec
 from .utils import (
     SVG_NS, EMU_PER_PX,
@@ -419,7 +420,12 @@ def _background_xml_from_rect(
     ctx: ConvertContext,
 ) -> str:
     """Build native ``p:bg`` XML from a full-slide SVG background rect."""
-    fill_xml = build_fill_xml(elem, ctx, get_fill_opacity(elem, ctx))
+    fill_xml = build_fill_xml(
+        elem,
+        ctx,
+        get_fill_opacity(elem, ctx),
+        usage="background",
+    )
     if not fill_xml or '<a:noFill' in fill_xml:
         return ''
     return f'<p:bg><p:bgPr>{fill_xml}<a:effectLst/></p:bgPr></p:bg>'
@@ -582,6 +588,7 @@ def convert_svg_to_slide_shapes(
     image_quality: int = 85,
     native_objects: bool = False,
     theme_font_spec: ThemeFontSpec | None = None,
+    theme_color_spec: ThemeColorSpec | None = None,
     trace_out: list[dict[str, Any]] | None = None,
 ) -> tuple[
     str,
@@ -611,6 +618,9 @@ def convert_svg_to_slide_shapes(
             markers to native PowerPoint objects. Default off.
         theme_font_spec: Optional major/minor theme-font contract. Matching SVG
             families emit DrawingML theme tokens instead of fixed typefaces.
+        theme_color_spec: Optional context-aware theme-color contract. Exact
+            locked colors emit DrawingML scheme tokens while local colors stay
+            fixed.
         trace_out: Optional list populated with one per-slide trace dictionary.
 
     Returns:
@@ -689,6 +699,7 @@ def convert_svg_to_slide_shapes(
         native_objects_enabled=native_objects,
         trace_events=trace_events,
         theme_font_spec=theme_font_spec,
+        theme_color_spec=theme_color_spec,
     )
 
     shapes: list[str] = []
