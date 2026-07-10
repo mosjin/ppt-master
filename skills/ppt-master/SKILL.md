@@ -17,6 +17,17 @@ metadata:
 
 **Core Pipeline**: `Source Document → Create Project → [Template] → Strategist → [Image_Generator] → Executor Live Preview → Quality Check → Post-processing → Export`
 
+### SVG Page-Design Boundary
+
+| Scope | Contract |
+|---|---|
+| Any route that authors or regenerates slide visuals through SVG | `svg_output/` is the complete page-design source: every visible text, image, shape, chart/table fallback, and layout element that should appear on the exported slide is present in that page SVG or referenced by it. |
+| Templates, `design_spec.md`, and `spec_lock.md` | Authoring/control inputs. They guide SVG creation but MUST NOT supply visible slide content that is absent from the completed SVG during export. |
+| SVG-to-PPTX export | Translation only: map SVG content to DrawingML/native objects and reorganize represented content into Master/Layout/Slide structure without inventing new visible page content. |
+| Direct PPTX and presentation-behavior workflows | Remain separate. `template-fill-pptx`, `native-enhance-pptx`, animations, transitions, speaker notes, narration, and package relationships are not required to round-trip through SVG. |
+
+**MUST — page-design closure**: For an SVG-authoring route, inspect the final page SVG to determine what the exported slide looks like. Do not reinterpret “SVG is the page-design language” as “SVG is the complete PPTX package description language.”
+
 > [!CAUTION]
 > ## 🚨 Global Execution Discipline (MANDATORY)
 >
@@ -29,7 +40,7 @@ metadata:
 > 5. **NO SPECULATIVE EXECUTION** — "Pre-preparing" content for subsequent Steps is FORBIDDEN (e.g., writing SVG code during the Strategist phase)
 > 6. **NO SUB-AGENT SVG GENERATION** — Executor Step 6 SVG generation is context-dependent and MUST be completed by the current main agent end-to-end. Delegating page SVG generation to sub-agents is FORBIDDEN
 > 7. **SEQUENTIAL PAGE GENERATION ONLY** — In Executor Step 6, after the global design context is confirmed, SVG pages MUST be generated sequentially page by page in one continuous pass. Grouped page batches (for example, 5 pages at a time) are FORBIDDEN
-> 8. **SPEC_LOCK RE-READ PER PAGE** — Before generating each SVG page, Executor MUST `read_file <project_path>/spec_lock.md`. All colors / fonts / icons / images MUST come from this file — no values from memory or invented on the fly. Executor MUST also look up the confirmed `pptx_structure.template_adherence` when present, the current page's `page_rhythm` (`anchor` / `dense` / `breathing`), `page_layouts` (which template SVG to inherit, if any), `page_charts` (which chart template to adapt, if any), and — when `pptx_structure.mode` is `template` or `preserve` — `pptx_layouts` (which native PowerPoint layout the page references). Empty / absent `page_layouts` rows are intentional only for adaptive/free design; strict template use requires one per page — see executor-base.md §2.1. This rule exists to resist context-compression drift on long decks and to break the uniform "every page is a card grid" default
+> 8. **SPEC_LOCK RE-READ PER PAGE** — Before generating each SVG page, Executor MUST `read_file <project_path>/spec_lock.md`. All colors / fonts / icons / images MUST come from this file — no values from memory or invented on the fly. Executor MUST also look up the confirmed `pptx_structure.template_adherence` when present, the current page's `page_rhythm` (`anchor` / `dense` / `breathing`), `page_layouts` (which template SVG to inherit), `page_charts` (which chart template to adapt, if any), and — when `pptx_structure.mode` is `template` or `preserve` — `pptx_layouts` (which native PowerPoint layout the page references). Deck/layout template routes require both mappings for every page: `strict` reuses the selected layout contract; `adaptive` may create a new explicit layout contract from the selected reference. Empty / absent `page_layouts` rows are reserved for free design and brand-only routes — see executor-base.md §2.1. This rule exists to resist context-compression drift on long decks and to break the uniform "every page is a card grid" default
 > 9. **SVG MUST BE HAND-WRITTEN, NOT SCRIPT-GENERATED** — Every SVG page is written by the main agent directly, one page at a time (see rules 6 and 7). Writing or running a Python / Node / shell script that produces the SVG files in batch — looping over pages, templating from data, or emitting them via a generator — is FORBIDDEN, including under "save tokens", "quick draft", or "user is in a hurry" pretexts. The script-generation path was tried on a feature branch and abandoned: cross-page visual consistency depends on per-page authoring with full upstream context, which a generator script cannot reproduce
 > 10. **FOLLOW DETERMINISTIC ROUTING RULES** — Do not add blocking routing questions when this skill defines a route. If the user request violates a route precondition, state the required prerequisite and stop that route instead of asking the user to choose around the rule. Ordinary finite options, stylistic preferences, and recoverable details are surfaced with a recommended value plus alternatives at the next existing confirmation gate.
 
@@ -267,9 +278,9 @@ find <project_path>/templates -type f \( -iname '*.png' -o -iname '*.jpg' -o -in
 
 The same split applies to all three kinds — bitmaps always land in `images/`, the rest in `templates/`. The spec's `kind` field tells Strategist how to read the `templates/` side; downstream code doesn't distinguish. (Template SVGs in `templates/` are reference material only — the rendered pages live in `svg_output/` and reference images via `../images/`.)
 
-If the selected structure owner ships `native_structure.json` + `source_template.pptx`, keep the pair together in `<project>/templates/`. During fusion, only the winning **structure segment** may contribute this pair: a layout override without a native pair removes a deck's pair, while a brand-only identity override leaves it intact. Never mix one template's contract with another template's source package.
+Legacy template packages may ship `native_structure.json` + `source_template.pptx`; keep the pair together in `<project>/templates/` for backward-compatible `preserve` export. Current `create-template` output does not package this pair: it rebuilds complete, explicitly layered SVG templates instead. During fusion, never mix one legacy contract with another template's source package.
 
-The pair is retained capability, not an automatic generation route. The Strategist confirmation stage decides whether the selected template is used `strict` (every page follows the SVG roster; compatible native structure may use `preserve`) or `adaptive` (template SVGs are optional page references; native export stays `baseline`). Its mere presence must never force `preserve`.
+The Strategist confirmation stage decides whether the selected template is used `strict` or `adaptive`. Both use `pptx_structure.mode: template` for current templates and map every page to one reference SVG plus one output PowerPoint layout. `strict` keeps the referenced layout contract unchanged; `adaptive` may create a new layout key while keeping the template Master contract. Legacy `preserve` remains strict-only compatibility behavior.
 
 #### Multi-path fusion
 
@@ -586,12 +597,14 @@ python3 ${SKILL_DIR}/scripts/svg_editor/server.py <project_path> --live --daemon
 
 > Image facts: trust the `analysis/image_analysis.csv` regenerated at the end of Step 5. If `images/` changed since (the user swapped or added files), re-run `python3 ${SKILL_DIR}/scripts/analyze_images.py <project_path>/images` before laying images out — facts are re-derived on use, never a stale store (Step 4 image-facts note).
 
-**Per-page spec_lock re-read (Mandatory)**: before **each** SVG page, `read_file <project_path>/spec_lock.md` and use only its colors / fonts / icons / images, plus the per-page `page_rhythm` / `page_layouts` / `page_charts` lookups and the optional `pptx_structure` / `pptx_layouts` native-layout contract. Resists context-compression drift on long decks. See executor-base.md §2.1.
+**Per-page spec_lock re-read (Mandatory)**: before **each** SVG page, `read_file <project_path>/spec_lock.md` and use only its colors / fonts / icons / images, plus the per-page `page_rhythm` / `page_layouts` / `page_charts` lookups and the route-specific `pptx_structure` / `pptx_layouts` native-layout contract. The contract is absent only on legacy/free inputs that have not yet been normalized; it is mandatory for every current template page. Resists context-compression drift on long decks. See executor-base.md §2.1.
 
 > ⚠️ **Main-agent only**: SVG generation MUST stay in the current main agent — page design depends on full upstream context. Do NOT delegate to sub-agents.
 > ⚠️ **Generation rhythm**: generate pages sequentially, one at a time, in the same continuous context. Do NOT batch (e.g., 5 per group).
 
 **Visual Construction Phase**: generate SVG pages sequentially, one at a time, in one continuous pass → `<project_path>/svg_output/`
+
+Each completed SVG MUST be a standalone, complete representation of that slide's visible design. Template SVGs and locked planning artifacts may guide construction, but export must not reach back to them to add visible objects omitted from `svg_output/`. Speaker notes, animation, narration, transitions, and direct native-PPTX workflows remain separately owned artifacts/capabilities.
 
 **Quality Check Gate (Mandatory)** — after all SVGs, BEFORE annotation handling and speaker notes:
 ```bash
@@ -707,7 +720,10 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 > Master chrome. It does not inspect visual similarity or infer placeholders,
 > and all actual page content remains slide-local. When every slide in one
 > family carries the exact same explicit background, that background moves to
-> the family layout. This is
+> the family layout. The same family may also promote an identical leading
+> prefix of explicitly named chrome when every family member carries the same
+> generated OOXML, relationships are safe, no timing targets it, and z-order is
+> preserved. This is
 > an export-only package pass: SVG authoring, live preview, and model context are
 > unchanged. Baseline also prunes base-template slide layouts no generated slide
 > references, so the PowerPoint new-slide picker only offers layouts that belong
@@ -727,7 +743,7 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 > `--pptx-structure flat` only for debugging/comparison when all generated
 > backgrounds and chrome must remain slide-local and fonts must stay concrete.
 
-> **Preserved source-template export** — a reusable template package created
+> **Legacy preserved source-template export** — an existing template package
 > from a structured PPTX may ship `native_structure.json` plus
 > `source_template.pptx`. This pair records a reusable capability; it does not
 > select the downstream route by itself. Only a confirmed
@@ -741,16 +757,13 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 > original placeholder type/index. Preserve mode keeps the source layout picker
 > roster; it does not prune unused source layouts.
 >
-> A confirmed `template_adherence: adaptive` deck continues to use the created
-> template SVG roster as optional visual/layout references and exports through
-> `baseline`, even when the template directory contains the native pair. Pages
-> without a `page_layouts` row remain free design; the baseline post-pass owns
-> conservative Master/background/chrome extraction plus filename-backed Layout
-> family assignment exactly as it does without a template.
+> Current template creation no longer emits this pair. `preserve` is retained
+> only so existing template packages and projects remain exportable; do not
+> select it for newly created templates.
 
-> **Explicit reusable template export** — set `spec_lock.md`
-> `pptx_structure.mode: template` (or pass `--pptx-structure template`
-> explicitly) only when every SVG root declares `data-pptx-layout` and direct children
+> **Explicit reusable template export** — deck/layout template routes set
+> `spec_lock.md` `pptx_structure.mode: template`. Every SVG root declares
+> `data-pptx-layout`, and direct children
 > explicitly declare master/layout layers, an optional Slide background, or
 > PowerPoint placeholders. This
 > mode builds named reusable layouts and placeholder mappings; it does not
@@ -760,8 +773,10 @@ python3 ${SKILL_DIR}/scripts/svg_to_pptx.py <project_path>
 > example live in
 > [`references/shared-standards.md`](references/shared-standards.md#explicit-pptx-master--layout--placeholder-metadata-template-export).
 > Raw PPTX templates still route to `template-fill-pptx`; `template` structure
-> mode is for explicitly annotated SVG authoring. Source-package preservation is
-> available only after `create-template` has produced the reusable native pair.
+> mode is for explicitly annotated SVG authoring. Both `strict` and `adaptive`
+> template use stay on this deterministic route. Adaptive pages may define new
+> layout keys, but they repeat the same Master layer and one internally
+> consistent Layout/placeholder contract.
 > In template mode, `pptx_layouts` contains exactly one locked
 > layout key/name per page; reuse a key for a shared structure instead of
 > creating one key per content instance.
