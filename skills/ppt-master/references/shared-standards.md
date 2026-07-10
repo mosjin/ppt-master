@@ -153,9 +153,13 @@ One offending character invalidates the file and aborts export. Numeric refs (`&
 |---------------|---------------------|
 | `fill="rgba(255,255,255,0.1)"` | `fill="#FFFFFF" fill-opacity="0.1"` |
 | `<g opacity="0.2">...</g>` | Set `fill-opacity` / `stroke-opacity` on each child element individually |
-| `<image opacity="0.3"/>` | Overlay a `<rect fill="background-color" opacity="0.7"/>` mask layer after the image |
 
-**Mnemonic**: PPT does not recognize rgba, group opacity, or image opacity.
+**Allowed — picture opacity**: `<image opacity="0.3"/>` maps to native DrawingML
+`a:alphaModFix` and round-trips back to SVG. Use a numeric value from `0` to
+`1`; use an overlay only when the design needs a color wash rather than simple
+transparency.
+
+**Mnemonic**: use explicit paint alpha for shapes; image opacity is native.
 
 > Arrows: prefer `marker-end` for connector lines (§1.1) — converter produces native auto-rotating arrow heads. For block/chunky arrows, use standalone closed shapes; see `templates/charts/chevron_process.svg` and `templates/charts/process_flow.svg`.
 
@@ -199,7 +203,7 @@ metadata. See
 - **Typography floor (mandatory for all decks)**: content text `font-size` MUST be ≥ 15px; UI chrome (stamps, badges) may use 11–12px. ALL `<text>` elements MUST carry an explicit `font-weight` attribute — minimum `font-weight="500"` for body copy, `font-weight="700"` for headings. Omitting `font-weight` defaults to 400 (hairline-thin on projected slides). No `font-style="italic"` in content text.
 - **Styles**: inline only (`fill=""`, `font-size=""`); `<style>`/`class` FORBIDDEN (`id` inside `<defs>` is fine)
 - **Colors**: HEX only; transparency via `fill-opacity`/`stroke-opacity`
-- **Images**: `<image href="../images/xxx.png" preserveAspectRatio="xMidYMid slice"/>`
+- **Images**: `<image href="../images/xxx.png" preserveAspectRatio="xMidYMid slice"/>`; optional `opacity="0..1"` maps to native picture transparency
 - **Icons**: `<use data-icon="<library>/<name>" x="" y="" width="48" height="48" fill="#HEX"/>` (auto-embedded post-processing). Always include library prefix. One stylistic library per deck (`chunk-filled`/`tabler-filled`/`tabler-outline`/`phosphor-duotone`); `simple-icons` only for real brand marks. See [`../templates/icons/README.md`](../templates/icons/README.md).
 
 ### Inline Text Runs (Single Logical Line = Single `<text>`)
@@ -375,7 +379,9 @@ Full reference: [`animations.md`](animations.md).
 
 ## 6. Shadow & Overlay Techniques
 
-> `<mask>` elements and `<image opacity="...">` are banned. Always use stacked `<rect>` or gradient overlays instead (see §2).
+> `<mask>` elements are banned. Use stacked `<rect>` or gradient overlays for
+> color washes; use `<image opacity="0..1">` for uniform picture transparency
+> (see §2).
 
 ### Shadow
 
