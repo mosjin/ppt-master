@@ -1306,9 +1306,8 @@ class SVGQualityChecker:
         `dkUpDiag`). Two failure modes worth catching pre-export:
 
         1. Missing annotation → converter silently falls back to `ltUpDiag`
-           (diagonal stripes) and picks `bg = #FFFFFF` when the pattern has
-           no child <rect>, turning a hand-authored grid into white-on-stripes
-           in PPTX.
+           (diagonal stripes). Color metadata or child paints still resolve,
+           with white as the final background fallback.
         2. Invalid preset name → PPTX schema rejects the file; PowerPoint
            opens it with "needs to be repaired". OOXML
            `ST_PresetPatternVal` is a closed enum — only the names in
@@ -1323,9 +1322,9 @@ class SVGQualityChecker:
                 result['warnings'].append(
                     f"<pattern id=\"{pat_id}\"> has no data-pptx-pattern attribute — "
                     "PPTX export will fall back to `ltUpDiag` (diagonal stripes), "
-                    "not your custom geometry. Add data-pptx-pattern=\"lgGrid\" / "
-                    "\"smGrid\" / etc. plus a <rect fill=\"<bg>\"/> child so the "
-                    "preset and bg color match your design."
+                    "not your custom geometry. Add a valid data-pptx-pattern; "
+                    "set data-pptx-fg/data-pptx-bg or matching child paints "
+                    "when explicit pattern colors are required."
                 )
                 continue
             if prst not in self._OOXML_PATTERN_PRESETS:
@@ -1335,8 +1334,8 @@ class SVGQualityChecker:
                     "will fail schema validation ('needs to be repaired'). "
                     "Use one of: smGrid / lgGrid / dotGrid (grids), "
                     "ltUpDiag / dkUpDiag / cross / diagCross / weave / plaid / "
-                    "horzBrick (others); full enum in svg_quality_checker.py "
-                    "_OOXML_PATTERN_PRESETS."
+                    "horzBrick (others); see references/shared-standards.md §7 "
+                    "for the full authoring enum."
                 )
 
     def _check_native_object_markers(self, root: ET.Element, result: Dict) -> None:
