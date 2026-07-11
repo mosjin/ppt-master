@@ -1661,6 +1661,7 @@ class SVGQualityChecker:
                     warnings = _validate_native_object_marker_with_warnings(
                         marker,
                         ancestors=ancestors_tuple,
+                        document_root=root,
                     )
                 except RuntimeError as exc:
                     result['errors'].append(
@@ -1685,6 +1686,7 @@ class SVGQualityChecker:
             for warning in _native_object_marker_warnings(
                 marker,
                 ancestors=ancestors_tuple,
+                document_root=root,
             ):
                 result['warnings'].append(
                     f"data-pptx-native marker {marker_id}: {warning}"
