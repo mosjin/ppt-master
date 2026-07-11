@@ -2,13 +2,7 @@
 
 from __future__ import annotations
 
-# Import animation module (optional)
-try:
-    from pptx_animations import create_transition_xml, TRANSITIONS
-    ANIMATIONS_AVAILABLE = True
-except ImportError:
-    ANIMATIONS_AVAILABLE = False
-    TRANSITIONS = {}
+from pptx_transitions import TRANSITIONS, create_transition_xml
 
 
 def link_shape_xml(shape_id: int, href_rid: str, x: int, y: int, w: int, h: int) -> str:
@@ -63,12 +57,14 @@ def create_slide_xml_with_svg(
         link_regions: Optional list of {href_rid, x, y, w, h} for hyperlink overlays.
     """
     transition_xml = ''
-    if transition and ANIMATIONS_AVAILABLE:
-        transition_xml = '\n' + create_transition_xml(
+    if transition is not None or auto_advance is not None:
+        transition_fragment = create_transition_xml(
             effect=transition,
             duration=transition_duration,
             advance_after=auto_advance,
         )
+        if transition_fragment:
+            transition_xml = '\n' + transition_fragment
 
     link_shapes_xml = ''
     if link_regions:
