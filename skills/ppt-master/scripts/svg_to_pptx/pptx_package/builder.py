@@ -114,7 +114,6 @@ from .template_structure import (
     template_placeholder_bindings,
 )
 from .template_validation import validate_pptx_template_package
-from .text_validation import validate_pptx_text_contracts
 
 SLIDE_LAYOUT_REL_TYPE = (
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"
@@ -4139,12 +4138,9 @@ def create_pptx_with_native_svg(
             separators=(',', ':'),
         )
         animation_rng = random.Random(animation_seed)
-        runtime_trace: list[dict[str, Any]] | None = [] if use_native_shapes else None
-        conversion_trace: list[dict[str, Any]] | None = (
-            runtime_trace if conversion_trace_path else None
-        )
+        conversion_trace: list[dict[str, Any]] | None = [] if conversion_trace_path else None
         structure_trace: list[dict[str, Any]] | None = (
-            runtime_trace
+            []
             if use_native_shapes and pptx_structure in {"baseline", "structured", "preserve"}
             else None
         )
@@ -4224,7 +4220,9 @@ def create_pptx_with_native_svg(
                             animation_group_overrides=explicit_animation_groups,
                             theme_font_spec=active_theme_font_spec,
                             theme_color_spec=active_theme_color_spec,
-                            trace_out=runtime_trace,
+                            trace_out=conversion_trace
+                            if conversion_trace is not None
+                            else structure_trace,
                         )
                     )
 
@@ -4867,12 +4865,6 @@ def create_pptx_with_native_svg(
         except ValueError as exc:
             raise RuntimeError(
                 f'PPTX animation package validation failed: {exc}'
-            ) from exc
-        try:
-            validate_pptx_text_contracts(temp_output_path, runtime_trace)
-        except ValueError as exc:
-            raise RuntimeError(
-                f'PPTX text contract validation failed: {exc}'
             ) from exc
         shutil.move(str(temp_output_path), str(output_path))
         permission_warnings = _relax_output_permissions(output_path)

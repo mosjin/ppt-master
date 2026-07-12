@@ -22,7 +22,6 @@ from collections import Counter, defaultdict
 from xml.etree import ElementTree as ET
 
 from console_encoding import configure_utf8_stdio
-from svg_to_pptx.text_contract import TextContractError, validate_text_contracts
 
 configure_utf8_stdio()
 
@@ -1381,17 +1380,6 @@ class SVGQualityChecker:
 
     def _check_text_elements(self, content: str, root: ET.Element, result: Dict):
         """Check text elements and wrapping methods"""
-        try:
-            validate_text_contracts(
-                root,
-                merge_paragraphs=True,
-                source_name=result.get('file'),
-            )
-        except TextContractError as exc:
-            result['errors'].extend(
-                diagnostic.format() for diagnostic in exc.diagnostics
-            )
-
         # Count text and tspan elements
         text_count = content.count('<text')
         tspan_count = content.count('<tspan')
@@ -2555,8 +2543,6 @@ class SVGQualityChecker:
 
     def _categorize_issue(self, error_msg: str) -> str:
         """Categorize issue type"""
-        if error_msg.startswith('[TEXT_'):
-            return 'Text contract'
         if 'Invalid XML' in error_msg:
             return 'XML well-formedness'
         elif 'viewBox' in error_msg:
