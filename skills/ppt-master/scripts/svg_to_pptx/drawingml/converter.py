@@ -1192,7 +1192,7 @@ def collect_unsupported_visuals(
 
 
 def convert_svg_to_slide_shapes(
-    svg_path: Path,
+    svg_path: str | Path,
     slide_num: int = 1,
     verbose: bool = False,
     merge_paragraphs: bool = True,
@@ -1260,6 +1260,7 @@ def convert_svg_to_slide_shapes(
         - content_type_overrides: Dict of {pptx internal path: content type}
           for package_files that require [Content_Types].xml overrides.
     """
+    svg_path = Path(svg_path)
     tree = ET.parse(str(svg_path))
     root = tree.getroot()
     _require_chart_table_marker_attributes(root, svg_path)
