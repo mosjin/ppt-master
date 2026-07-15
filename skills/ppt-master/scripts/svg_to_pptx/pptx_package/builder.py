@@ -2315,8 +2315,14 @@ def _placeholder_text_body(
         if source_body_pr is not None
         else ET.Element(f"{{{DML_NS}}}bodyPr")
     )
-    source_bounds = _shape_bounds_emu(source_shape, None)
     target_bounds = _shape_bounds_emu(source_shape, item.placeholder_bounds)
+    try:
+        source_bounds = _shape_bounds_emu(source_shape, None)
+    except TemplateStructureError:
+        # Composite proxy content may compile to p:grpSp, whose transform is
+        # intentionally not reused for the Layout's synthetic p:sp carrier.
+        # The explicit design-zone bounds remain the authoritative frame.
+        source_bounds = target_bounds
     _normalize_placeholder_body_properties(
         body_pr,
         source_bounds,
@@ -2711,6 +2717,7 @@ def _apply_explicit_layout_structure(
             master_part,
             base_layout_part,
             prototype.layout_name,
+            show_master_shapes=prototype.layout_show_master_shapes,
         )
         layout_path = extract_dir / layout_part
         layout_rels_path = _relationships_path_for_part(extract_dir, layout_part)
@@ -2799,6 +2806,10 @@ def _apply_explicit_layout_structure(
     )
     expected_backgrounds.update(slide_backgrounds)
     for state in states:
+        state.root.set(
+            "showMasterSp",
+            "1" if state.spec.slide_show_inherited_shapes else "0",
+        )
         _write_xml_tree(state.slide_path, state.tree)
         expected_backgrounds.setdefault(
             f"ppt/slides/slide{state.spec.slide_num}.xml",
