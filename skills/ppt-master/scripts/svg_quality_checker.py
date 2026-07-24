@@ -3381,7 +3381,8 @@ class SVGQualityChecker:
                     ),
                     outer=boundary,
                     repair=(
-                        'reflow the text or revise the root module bounds'
+                        'expand the root module bounds into available '
+                        'non-overlapping space; otherwise reflow the text'
                     ),
                 )
 
