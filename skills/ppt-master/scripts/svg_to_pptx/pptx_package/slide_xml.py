@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pptx_transitions import TRANSITIONS, create_transition_xml
+from pptx_transitions import create_transition_xml
 
 
 def link_shape_xml(shape_id: int, href_rid: str, x: int, y: int, w: int, h: int) -> str:
@@ -41,6 +41,7 @@ def create_slide_xml_with_svg(
     auto_advance: float | None = None,
     use_compat_mode: bool = True,
     link_regions: list[dict] | None = None,
+    transition_effect_options: dict[str, object] | None = None,
 ) -> str:
     """Create slide XML containing an SVG image.
 
@@ -51,6 +52,8 @@ def create_slide_xml_with_svg(
         width_emu: Width in EMU.
         height_emu: Height in EMU.
         transition: Transition effect name.
+        transition_effect_options: PowerPoint Effect Options for the selected
+            native transition.
         transition_duration: Transition duration in seconds.
         auto_advance: Auto-advance interval in seconds.
         use_compat_mode: Whether to use compatibility mode (PNG + SVG dual format).
@@ -62,6 +65,7 @@ def create_slide_xml_with_svg(
             effect=transition,
             duration=transition_duration,
             advance_after=auto_advance,
+            effect_options=transition_effect_options,
         )
         if transition_fragment:
             transition_xml = '\n' + transition_fragment
