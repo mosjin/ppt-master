@@ -60,6 +60,7 @@ from ..animation_config import (
     resolve_morph_pairs,
     resolve_slide_animation_config,
 )
+from ..drawingml.context import resolve_text_flow
 from ..drawingml.converter import convert_svg_to_slide_shapes
 from ..drawingml.theme_colors import (
     ThemeColorSpec,
@@ -1672,7 +1673,7 @@ def _template_shape_for_item(
             return None
     if not shape_ids:
         text_hint = (
-            "; multiline text placeholders require the default paragraph merge "
+            "; multiline text placeholders require a single-frame text mode "
             "and cannot use --no-merge"
             if item.placeholder and item.placeholder_carrier_tag == "text"
             else ""
@@ -4607,7 +4608,7 @@ def create_pptx_with_native_svg(
     absolute_link_base: Path | None = None,
     cache_dir: Path | None = None,
     workers: int | None = None,
-    merge_paragraphs: bool = True,
+    merge_paragraphs: bool | None = None,
     image_optimize: bool = True,
     image_max_dimension: int | None = 2560,
     image_sizing: str = 'cap',
@@ -4629,6 +4630,7 @@ def create_pptx_with_native_svg(
     expected_viewbox: str | None = None,
     animation_resource_root: Path | None = None,
     transition_effect_options: dict[str, object] | None = None,
+    text_flow: str | None = None,
 ) -> bool:
     """Create a PPTX file with native DrawingML shapes.
 
@@ -4669,6 +4671,10 @@ def create_pptx_with_native_svg(
         narration_audio: Optional dict mapping SVG stem to narration audio file.
         use_narration_timings: Whether to set slide auto-advance from audio duration.
         narration_padding: Extra seconds added after each narration before advancing.
+        merge_paragraphs: Legacy compatibility option. True selects reflow;
+            False selects split. Do not combine with ``text_flow``.
+        text_flow: Positional-tspan policy: preserve authored line breaks in
+            one frame, reflow text, or split visual lines into separate frames.
         image_optimize: Whether native export optimizes raster images when needed.
         image_max_dimension: Preferred optimized image dimension cap in pixels.
         image_sizing: ``cap`` preserves unchanged source bytes and limits
@@ -4707,6 +4713,7 @@ def create_pptx_with_native_svg(
     Returns:
         Whether all slides were successfully created.
     """
+    text_flow = resolve_text_flow(text_flow, merge_paragraphs)
     public_svg_files = list(svg_files)
     definition_svg_files = list(layout_definition_files or [])
     public_slide_names = [path.stem for path in public_svg_files]
@@ -5165,7 +5172,7 @@ def create_pptx_with_native_svg(
                     ) = (
                         convert_svg_to_slide_shapes(
                             svg_path, slide_num=slide_num, verbose=verbose,
-                            merge_paragraphs=merge_paragraphs,
+                            text_flow=text_flow,
                             image_optimize=image_optimize,
                             image_max_dimension=image_max_dimension,
                             image_sizing=image_sizing,
