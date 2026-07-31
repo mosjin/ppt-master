@@ -29,23 +29,20 @@ from xml.etree import ElementTree as ET
 from native_payloads import NativePayloadError, hydrate_native_payload_refs
 from slide_roster import discover_slide_svgs
 
+from . import svg_contracts
+from .xml_support import (
+    SVG_NS,
+    XLINK_NS,
+    element_label as _element_label,
+    local_name as _local_name,
+)
+
 try:
     from project_utils import CANVAS_FORMATS, validate_communication_trace
 except ImportError:
     print("Warning: Unable to import project_utils")
     CANVAS_FORMATS = {}
     validate_communication_trace = None
-
-try:
-    from pptx_effects import (
-        EFFECT_REASON_ATTR as _EFFECT_REASON_ATTR,
-        EFFECT_STATUS_ATTR as _EFFECT_STATUS_ATTR,
-        project_effect_status_errors as _project_effect_status_errors,
-    )
-except ImportError:
-    _EFFECT_REASON_ATTR = 'data-pptx-effect-reason'
-    _EFFECT_STATUS_ATTR = 'data-pptx-effect-status'
-    _project_effect_status_errors = None
 
 from svg_to_pptx.canvas_contract import (
     CanvasContractError,
@@ -84,117 +81,38 @@ else:
 
 try:
     from svg_to_pptx.drawingml.utils import (
-        DRAWINGML_TEXT_FONT_SIZE_MAX as _DRAWINGML_TEXT_FONT_SIZE_MAX,
-        DRAWINGML_TEXT_FONT_SIZE_MIN as _DRAWINGML_TEXT_FONT_SIZE_MIN,
         IDENTITY_MATRIX as _IDENTITY_MATRIX,
-        PROJECT_OPACITY_PROPERTIES as _OPACITY_PROPERTIES,
         PROJECT_PAINT_PROPERTIES as _PAINT_PROPERTIES,
-        PROJECT_PERCENTAGE_OPACITY_PROPERTIES as _PERCENTAGE_OPACITY_PROPERTIES,
         detect_text_lang as _detect_text_lang,
-        format_project_geometry_length as _format_project_geometry_length,
-        format_project_image_aspect_ratio as _format_project_image_aspect_ratio,
-        format_project_opacity as _format_project_opacity,
-        font_px_to_hpt as _font_px_to_hpt,
-        is_canonical_project_geometry_length as _is_canonical_project_geometry_length,
-        is_project_opacity_default_form as _is_project_opacity_default_form,
-        is_project_paint_default_form as _is_project_paint_default_form,
-        iter_project_geometry_lengths as _iter_project_geometry_lengths,
-        iter_project_image_aspect_ratios as _iter_project_image_aspect_ratios,
-        iter_project_opacities as _iter_project_opacities,
-        iter_project_paints as _iter_project_paints,
-        iter_project_stroke_styles as _iter_project_stroke_styles,
-        iter_project_transforms as _iter_project_transforms,
         matrix_multiply as _matrix_multiply,
-        noncanonical_stroke_dash_numbers as _noncanonical_stroke_dash_numbers,
-        noncanonical_transform_numbers as _noncanonical_transform_numbers,
         parse_inline_style as _parse_inline_style,
         parse_project_geometry_length as _parse_project_geometry_length,
         parse_project_image_aspect_ratio as _parse_project_image_aspect_ratio,
         parse_project_opacity as _parse_project_opacity,
-        parse_project_paint as _parse_project_paint,
-        parse_project_stroke_dasharray as _parse_project_stroke_dasharray,
-        parse_project_stroke_enum as _parse_project_stroke_enum,
         parse_svg_color as _parse_export_color,
-        parse_svg_length as _parse_export_length,
         parse_transform_matrix as _parse_transform_matrix,
-        project_definition_errors as _project_definition_errors,
-        project_filter_errors as _project_filter_errors,
-        project_gradient_errors as _project_gradient_errors,
-        project_image_aspect_ratio_errors as _project_image_aspect_ratio_errors,
         project_mask_errors as _project_mask_errors,
-        project_marker_errors as _project_marker_errors,
-        project_opacity_errors as _project_opacity_errors,
-        project_paint_errors as _project_paint_errors,
-        project_paint_reference_errors as _project_paint_reference_errors,
-        project_stroke_style_errors as _project_stroke_style_errors,
-        project_transform_errors as _project_transform_errors,
         rect_to_dml_xfrm as _rect_to_dml_xfrm,
         transform_point as _transform_point,
         unsafe_exported_font_faces as _unsafe_exported_font_faces,
         validate_dml_shape_matrix as _validate_dml_shape_matrix,
     )
 except ImportError:
-    _DRAWINGML_TEXT_FONT_SIZE_MAX = None
-    _DRAWINGML_TEXT_FONT_SIZE_MIN = None
     _IDENTITY_MATRIX = None
-    _OPACITY_PROPERTIES = None
     _PAINT_PROPERTIES = None
-    _PERCENTAGE_OPACITY_PROPERTIES = None
     _detect_text_lang = None
-    _format_project_geometry_length = None
-    _format_project_image_aspect_ratio = None
-    _format_project_opacity = None
-    _font_px_to_hpt = None
-    _is_canonical_project_geometry_length = None
-    _is_project_opacity_default_form = None
-    _is_project_paint_default_form = None
-    _iter_project_geometry_lengths = None
-    _iter_project_image_aspect_ratios = None
-    _iter_project_opacities = None
-    _iter_project_paints = None
-    _iter_project_stroke_styles = None
-    _iter_project_transforms = None
     _matrix_multiply = None
-    _noncanonical_stroke_dash_numbers = None
-    _noncanonical_transform_numbers = None
     _parse_inline_style = None
     _parse_project_geometry_length = None
     _parse_project_image_aspect_ratio = None
     _parse_project_opacity = None
-    _parse_project_paint = None
-    _parse_project_stroke_dasharray = None
-    _parse_project_stroke_enum = None
     _parse_export_color = None
-    _parse_export_length = None
     _parse_transform_matrix = None
-    _project_definition_errors = None
-    _project_filter_errors = None
-    _project_gradient_errors = None
-    _project_image_aspect_ratio_errors = None
     _project_mask_errors = None
-    _project_marker_errors = None
-    _project_opacity_errors = None
-    _project_paint_errors = None
-    _project_paint_reference_errors = None
-    _project_stroke_style_errors = None
-    _project_transform_errors = None
     _rect_to_dml_xfrm = None
     _transform_point = None
     _unsafe_exported_font_faces = None
     _validate_dml_shape_matrix = None
-
-try:
-    from svg_to_pptx.drawingml.paths import (
-        iter_project_freeform_geometry as _iter_project_freeform_geometry,
-        noncanonical_path_numbers as _noncanonical_path_numbers,
-        noncanonical_points_numbers as _noncanonical_points_numbers,
-        project_gradient_geometry_errors as _project_gradient_geometry_errors,
-    )
-except ImportError:
-    _iter_project_freeform_geometry = None
-    _noncanonical_path_numbers = None
-    _noncanonical_points_numbers = None
-    _project_gradient_geometry_errors = None
 
 try:
     from svg_to_pptx.drawingml.converter import (
@@ -211,18 +129,14 @@ try:
     from svg_to_pptx.drawingml.elements import (
         drawingml_text_frame_width_emu as _drawingml_text_frame_width_emu,
         estimate_single_line_text_frame_width as _estimate_single_line_text_frame_width,
-        project_clip_path_errors as _project_clip_path_errors,
         project_image_errors as _project_image_errors,
-        project_nested_svg_crop_errors as _project_nested_svg_crop_errors,
         validate_single_line_text_run_advances as _validate_single_line_text_run_advances,
         validate_preset_geometry_metadata as _validate_preset_geometry_metadata,
     )
 except ImportError:
     _drawingml_text_frame_width_emu = None
     _estimate_single_line_text_frame_width = None
-    _project_clip_path_errors = None
     _project_image_errors = None
-    _project_nested_svg_crop_errors = None
     _validate_single_line_text_run_advances = None
     _validate_preset_geometry_metadata = None
 
@@ -231,7 +145,6 @@ try:
         normalize_project_text_segments as _normalize_project_text_segments,
         parse_project_font_weight as _parse_project_font_weight,
         parse_project_text_anchor as _parse_project_text_anchor,
-        project_text_property_diagnostics as _project_text_property_diagnostics,
         resolve_project_xml_space as _resolve_project_xml_space,
         resolve_project_font_sizes as _resolve_project_font_sizes,
         resolve_project_letter_spacings as _resolve_project_letter_spacings,
@@ -240,7 +153,6 @@ except ImportError:
     _normalize_project_text_segments = None
     _parse_project_font_weight = None
     _parse_project_text_anchor = None
-    _project_text_property_diagnostics = None
     _resolve_project_xml_space = None
     _resolve_project_font_sizes = None
     _resolve_project_letter_spacings = None
@@ -327,24 +239,13 @@ except ImportError:
     _validate_semantic_markers = None
 
 try:
-    from svg_to_pptx.geometry_properties import (
-        materialize_inline_geometry_properties as _materialize_inline_geometry_properties,
-        validate_inline_geometry_properties as _validate_inline_geometry_properties,
-    )
-except ImportError:
-    _materialize_inline_geometry_properties = None
-    _validate_inline_geometry_properties = None
-
-try:
     from svg_to_pptx.use_expander import (
         UseExpansionError as _UseExpansionError,
         expand_local_use_references as _expand_local_use_references,
-        validate_local_use_references as _validate_local_use_references,
     )
 except ImportError:
     _UseExpansionError = None
     _expand_local_use_references = None
-    _validate_local_use_references = None
 
 try:
     from svg_to_pptx.tspan_flattener import (
@@ -434,14 +335,6 @@ _CHECK_PPTX_STRUCTURED_PROJECT = True
 _BARE_HEX_VALUE_RE = re.compile(
     r"(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})"
 )
-_CANONICAL_PAINT_ALPHA_PROPERTY = {
-    'fill': 'fill-opacity',
-    'stroke': 'stroke-opacity',
-    'stop-color': 'stop-opacity',
-    'flood-color': 'flood-opacity',
-}
-SVG_NS = "http://www.w3.org/2000/svg"
-XLINK_NS = "http://www.w3.org/1999/xlink"
 _NON_VISUAL_SVG_TAGS = frozenset({
     'defs',
     'desc',
@@ -498,23 +391,6 @@ _PPTX_STRUCTURE_SECTION_RE = re.compile(
 _PPTX_STRUCTURE_MODE_RE = re.compile(
     r"(?m)^-[ \t]+mode[ \t]*:[ \t]*([^\s#]+)[ \t]*(?:#.*)?$"
 )
-_SUPPORTED_INLINE_STYLE_PROPERTIES = frozenset({
-    'cx', 'cy', 'fill', 'fill-opacity', 'filter', 'flood-color',
-    'flood-opacity', 'font-family', 'font-size', 'font-style', 'font-weight',
-    'height', 'letter-spacing', 'opacity', 'r', 'rx', 'ry',
-    'shape-rendering', 'stop-color', 'stop-opacity', 'stroke',
-    'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'stroke-opacity',
-    'stroke-width', 'text-anchor', 'text-decoration', 'vector-effect',
-    'width', 'x', 'y',
-})
-_BAKE_REQUIRED_VISUAL_PROPERTIES = frozenset({
-    'backdrop-filter',
-    'isolation',
-    'mix-blend-mode',
-})
-_SHARED_FAIL_CLOSED_STYLE_PROPERTIES = frozenset({'mask'})
-
-
 def _compact_preset_ancestor_paint(
     root: ET.Element,
 ) -> list[tuple[str, tuple[str, ...]]]:
@@ -968,14 +844,6 @@ def _template_structure_checks_enabled(target_path: Path) -> bool:
     return _declared_template_structure_mode(target_path) == 'structured'
 
 
-def _local_name(elem: ET.Element) -> str:
-    """Return an XML element's namespace-free local tag name."""
-    tag = elem.tag
-    if not isinstance(tag, str):
-        return ''
-    return tag.rsplit('}', 1)[-1] if '}' in tag else tag
-
-
 def _direct_defs_index(
     root: ET.Element,
 ) -> tuple[Dict[str, ET.Element], set[str]]:
@@ -993,13 +861,6 @@ def _direct_defs_index(
                 duplicates.add(definition_id)
             definitions[definition_id] = child
     return definitions, duplicates
-
-
-def _element_label(elem: ET.Element) -> str:
-    """Return a compact element label for validation messages."""
-    tag = _local_name(elem)
-    elem_id = (elem.get('id') or '').strip()
-    return f'<{tag} id="{elem_id}">' if elem_id else f'<{tag}>'
 
 
 def _effective_presentation_value(
@@ -1295,52 +1156,52 @@ class SVGQualityChecker:
 
                 # 1a. Validate exact importer transport before compatible
                 # inline geometry is materialized on the shared tree.
-                self._check_nested_svg_crop_contract(root, result)
+                svg_contracts.check_nested_svg_crop_contract(root, result)
 
                 # 2. Check forbidden elements
-                self._check_forbidden_elements(content, root, result)
-                self._check_mask_contract(root, result)
+                svg_contracts.check_forbidden_elements(content, root, result)
+                svg_contracts.check_mask_contract(root, result)
 
                 # 2a. Validate direct geometry lengths and stroke widths.
-                self._check_geometry_length_values(root, result)
+                svg_contracts.check_geometry_length_values(root, result)
 
                 # 2b. Validate line-presentation grammar and mappings.
-                self._check_stroke_style_values(root, result)
+                svg_contracts.check_stroke_style_values(root, result)
 
                 # 2c. Validate image fit/crop grammar and mappings.
                 self._check_image_contract(root, svg_path, result)
-                self._check_image_aspect_ratio_values(root, result)
+                svg_contracts.check_image_aspect_ratio_values(root, result)
 
                 # 2d. Validate complete path-data and point-list grammar.
-                self._check_freeform_geometry_values(root, result)
+                svg_contracts.check_freeform_geometry_values(root, result)
 
                 # 2e. Validate complete transform grammar and native mappings.
-                self._check_transform_values(root, result)
+                svg_contracts.check_transform_values(root, result)
 
                 # 2f. Validate opacity grammar and native alpha mappings.
-                self._check_opacity_values(root, result)
+                svg_contracts.check_opacity_values(root, result)
 
                 # 2g. Validate the closed authoring-property surface and
                 # conditional definition interfaces before export.
-                self._check_authoring_property_contract(root, result)
-                self._check_text_property_contract(root, result)
+                svg_contracts.check_authoring_property_contract(root, result)
+                svg_contracts.check_text_property_contract(root, result)
                 self._check_preserved_txbody_contract(root, result)
-                self._check_paint_compatibility(root, result)
-                self._check_reference_spelling(root, result)
-                self._check_definition_contract(root, result)
-                self._check_paint_reference_contract(root, result)
-                self._check_marker_contract(root, result)
-                self._check_clip_path_contract(root, result)
+                svg_contracts.check_paint_compatibility(root, result)
+                svg_contracts.check_reference_spelling(root, result)
+                svg_contracts.check_definition_contract(root, result)
+                svg_contracts.check_paint_reference_contract(root, result)
+                svg_contracts.check_marker_contract(root, result)
+                svg_contracts.check_clip_path_contract(root, result)
 
                 # 2h. Validate the supported shadow/glow filter interface.
-                self._check_imported_effect_status(root, result)
-                self._check_filter_effects(root, result)
+                svg_contracts.check_imported_effect_status(root, result)
+                svg_contracts.check_filter_effects(root, result)
 
                 # 2i. Validate gradient definitions, stops, and coordinates.
-                self._check_gradient_interfaces(root, result)
+                svg_contracts.check_gradient_interfaces(root, result)
 
                 # 3. Check font-size values
-                self._check_font_size_values(content, result)
+                svg_contracts.check_font_size_values(content, result)
 
                 # 4. Check fonts
                 self._check_fonts(content, result)
@@ -2454,199 +2315,6 @@ class SVGQualityChecker:
                     svg_path.parent,
                     allow_template_placeholders=self.template_mode,
                 )
-            )
-
-    def _check_freeform_geometry_values(
-        self,
-        root: ET.Element,
-        result: Dict,
-    ) -> None:
-        """Reject malformed path/points syntax and advise decimal spelling."""
-        helpers = (
-            _format_project_geometry_length,
-            _iter_project_freeform_geometry,
-            _noncanonical_path_numbers,
-            _noncanonical_points_numbers,
-        )
-        if any(helper is None for helper in helpers):
-            result['warnings'].append(
-                "Unable to import svg_to_pptx freeform geometry validators; "
-                "native export will still validate path and points syntax."
-            )
-            return
-
-        errors: set[str] = set()
-        recommendations: Counter[tuple[str, str, str]] = Counter()
-        examples: Dict[tuple[str, str, str], List[str]] = defaultdict(list)
-
-        for elem, attribute, raw, min_points in _iter_project_freeform_geometry(root):
-            label = _element_label(elem)
-            try:
-                if raw is None:
-                    tag = _local_name(elem)
-                    raise ValueError(f'<{tag}> requires {attribute}')
-                if attribute == 'd':
-                    compatible_numbers = _noncanonical_path_numbers(raw)
-                else:
-                    required_points = min_points or 2
-                    compatible_numbers = _noncanonical_points_numbers(
-                        raw,
-                        min_points=required_points,
-                    )
-            except ValueError as exc:
-                errors.add(f'{label} {attribute}: {exc}')
-                continue
-
-            for number in compatible_numbers:
-                normalized = _format_project_geometry_length(float(number))
-                key = (attribute, number, normalized)
-                recommendations[key] += 1
-                if label not in examples[key] and len(examples[key]) < 3:
-                    examples[key].append(label)
-
-        result['errors'].extend(sorted(errors))
-        for (attribute, raw, normalized), count in sorted(recommendations.items()):
-            shown_examples = ', '.join(examples[(attribute, raw, normalized)])
-            result['warnings'].append(
-                f"Recommendation: freeform geometry {attribute} numeric token "
-                f"{raw!r} is converter-compatible in {count} occurrence(s) "
-                f"({shown_examples}); generated SVG should prefer the ordinary "
-                f"decimal spelling {normalized!r}. No change is required for export."
-            )
-
-    def _check_transform_values(
-        self,
-        root: ET.Element,
-        result: Dict,
-    ) -> None:
-        """Reject invalid transforms and advise ordinary decimal spelling."""
-        helpers = (
-            _format_project_geometry_length,
-            _iter_project_transforms,
-            _noncanonical_transform_numbers,
-            _project_transform_errors,
-        )
-        if any(helper is None for helper in helpers):
-            result['warnings'].append(
-                "Unable to import svg_to_pptx transform validators; "
-                "native export will still validate transform syntax."
-            )
-            return
-
-        transform_errors = set(_project_transform_errors(root))
-        if (
-            not transform_errors
-            and _expand_local_use_references is not None
-            and _UseExpansionError is not None
-        ):
-            expanded_root = copy.deepcopy(root)
-            try:
-                _expand_local_use_references(expanded_root)
-            except _UseExpansionError:
-                # The local-reference check owns the actionable diagnostic.
-                pass
-            else:
-                transform_errors.update(_project_transform_errors(expanded_root))
-        result['errors'].extend(
-            f'Invalid SVG transform: {error}'
-            for error in sorted(transform_errors)
-        )
-
-        recommendations: Counter[tuple[str, str]] = Counter()
-        examples: Dict[tuple[str, str], List[str]] = defaultdict(list)
-        for elem, raw in _iter_project_transforms(root):
-            try:
-                compatible_numbers = _noncanonical_transform_numbers(raw)
-            except ValueError:
-                continue
-            for number in compatible_numbers:
-                normalized = _format_project_geometry_length(float(number))
-                key = (number, normalized)
-                recommendations[key] += 1
-                label = _element_label(elem)
-                if label not in examples[key] and len(examples[key]) < 3:
-                    examples[key].append(label)
-
-        for (raw, normalized), count in sorted(recommendations.items()):
-            shown_examples = ', '.join(examples[(raw, normalized)])
-            result['warnings'].append(
-                f"Recommendation: transform numeric token {raw!r} is "
-                f"converter-compatible in {count} occurrence(s) "
-                f"({shown_examples}); generated SVG should prefer the ordinary "
-                f"decimal spelling {normalized!r}. No change is required for export."
-            )
-
-    def _check_font_size_values(self, content: str, result: Dict):
-        """Keep supported font-size units compatible and recommend unitless px."""
-        canonical_re = re.compile(r'^(?:\d+(?:\.\d+)?|\.\d+)$')
-        values = set()
-
-        for match in re.finditer(r'\bfont-size\s*=\s*(["\'])(.*?)\1', content, re.IGNORECASE):
-            values.add(match.group(2).strip())
-
-        for match in re.finditer(r'\bfont-size\s*:\s*([^;"\']+)', content, re.IGNORECASE):
-            values.add(match.group(1).strip())
-
-        if _parse_export_length is None:
-            result['warnings'].append(
-                "Unable to import svg_to_pptx length parser; skipped font-size syntax check"
-            )
-            return
-
-        unsupported = set()
-        drawingml_out_of_range = set()
-        compatible_noncanonical = set()
-        for raw in values:
-            try:
-                parsed_px = _parse_export_length(raw, math.nan, font_size=16)
-            except (TypeError, ValueError):
-                unsupported.add(raw)
-                continue
-            if not math.isfinite(parsed_px) or parsed_px < 0:
-                unsupported.add(raw)
-                continue
-            if _font_px_to_hpt is not None:
-                try:
-                    _font_px_to_hpt(parsed_px)
-                except ValueError:
-                    drawingml_out_of_range.add(raw)
-                    continue
-            if not canonical_re.fullmatch(raw):
-                compatible_noncanonical.add(raw)
-
-        if unsupported:
-            shown_values = sorted(unsupported)
-            shown = ', '.join(shown_values[:5])
-            more = len(shown_values) - 5
-            suffix = f" (+{more} more)" if more > 0 else ""
-            result['errors'].append(
-                f"Unsupported font-size value(s): {shown}{suffix}. Use a finite "
-                "non-negative SVG length supported by svg_to_pptx."
-            )
-
-        if drawingml_out_of_range:
-            shown_values = sorted(drawingml_out_of_range)
-            shown = ', '.join(shown_values[:5])
-            more = len(shown_values) - 5
-            suffix = f" (+{more} more)" if more > 0 else ""
-            result['errors'].append(
-                f"font-size value(s) {shown}{suffix} are outside the DrawingML "
-                f"range sz={_DRAWINGML_TEXT_FONT_SIZE_MIN}.."
-                f"{_DRAWINGML_TEXT_FONT_SIZE_MAX} (1..4000pt); PowerPoint would "
-                "repair the exported file. Do not use tiny transparent text as "
-                "a placeholder carrier: leave a text carrier blank or use the "
-                "composite object proxy contract."
-            )
-
-        if compatible_noncanonical:
-            shown_values = sorted(compatible_noncanonical)
-            shown = ', '.join(shown_values[:5])
-            more = len(shown_values) - 5
-            suffix = f" (+{more} more)" if more > 0 else ""
-            result['warnings'].append(
-                f"Recommendation: font-size value(s) {shown}{suffix} are "
-                "converter-compatible; generated SVG should prefer unitless px "
-                "values such as font-size=\"28\". No change is required for export."
             )
 
     def _check_fonts(self, content: str, result: Dict):
