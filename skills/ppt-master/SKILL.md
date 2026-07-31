@@ -10,6 +10,12 @@ metadata:
   author: mosjin
   version: "2.9.0"
   repository: https://github.com/mosjin/ppt-master
+  copyright: "Copyright (c) 2025-2026 Hugo He"
+  license: "MIT"
+  official_repository: "https://github.com/hugohe3/ppt-master"
+  sponsors:
+    - "SPONSORS.md"
+    - "SPONSORS_CN.md"
 ---
 
 # PPT Master Skill
