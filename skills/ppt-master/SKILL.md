@@ -2,7 +2,7 @@
 name: ppt-master
 description: >
   AI-driven presentation workflow for generating editable PPTX decks, creating
-  reusable Brand/Layout/Deck workspaces, filling native PPTX templates, and
+  reusable Brand/Style/Layout/Deck workspaces, filling native PPTX templates, and
   enhancing finished PPTX files. Use when the user asks to create, regenerate,
   template, fill, or enhance a presentation, "create PPT", "make presentation",
   "生成PPT", "做PPT", "制作演示文稿", or mentions "ppt-master".
