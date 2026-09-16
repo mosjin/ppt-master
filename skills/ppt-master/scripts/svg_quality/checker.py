@@ -1798,6 +1798,8 @@ class SVGQualityChecker:
                             current_assets,
                             baseline_assets,
                             changed_definition_ids=changed_definition_ids,
+                            current_root=root,
+                            baseline_root=baseline_root,
                         )
                     )
                     unchanged_by_owner[owner_key] = unchanged
