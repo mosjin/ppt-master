@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-10-04：上游同步 v2.11.0 → v3.0.0（120 提交 cherry-pick）
+
+### 问题
+`mosjin/ppt-master` 与上游 `hugohe3/ppt-master` 零共同 Git 提交（内容 fork，非 GitHub fork），
+无法 `git merge`，需把上游 v2.11.0→v3.0.0 的 138 个提交合入，同时不破坏 mosjin 自有定制。
+
+### 根因
+- 两边历史是独立构建的（最早提交信息相同但 SHA/根 tree 不同），常规 fast-forward/merge 不可用
+- 上游部分提交是版本号徽标（指向 hugohe3/releases）或空 merge，直接合入会污染 mosjin 仓库
+
+### 修复方案
+沿用本仓库历史做法：逐个 cherry-pick（保留原作者，committer 为 mosjin），分支 `sync-upstream-v3.0.0`。
+- 8 个提交已在 mosjin 树中（之前零散合过），用提交信息比对去重后跳过
+- 跳过：`6523ed85`/`0b0329af`（版本号徽标，指向上游 releases）、`1ae6e291`（空 merge，日文 UI 功能已单独合入）、`10888bef`（空 merge）
+- 5 处冲突手动解决：`pptx_cli.py` 两边加参数都保留；`drawingml_utils.py` 色表保留 mosjin 完整版（148 色），
+  取上游 `parse_inline_style`/`_parse_color_channel`/`rgb()` 解析；README×2 徽标与工作流介绍保留 mosjin 版
+
+### 验证
+- mosjin 定制零影响：`.gemini/`、`marketplace.json`、`skills/upgrade/`、README_CN 赞助商区块、
+  版本徽标（仍指向 mosjin/releases）全部完好
+- 所有 Python 文件 `ast.parse` 语法检查通过
+
+### 经验总结
+- **规则**：sync 前先用提交信息比对去重，避免重复合入
+- **规则**：merge 类提交先用 `-m 1` 试，空则 skip；版本号徽标类提交直接跳过
+- **原因**：内容 fork 没有共同祖先，cherry-pick 是唯一可行方式；blobless clone + sparse checkout
+  可大幅减少大仓库（700M+）的同步耗时
+
+---
+
 ## 2026-06-23: 版本号统一的隐藏真源 + 单面板守卫验证方法论
 
 ### Problem
