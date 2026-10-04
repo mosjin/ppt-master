@@ -1403,6 +1403,11 @@ class SVGQualityChecker:
                         result,
                     )
 
+                # 11-13. EduForge additions (mosjin): placeholder, contrast, font-size
+                self._check_placeholder_phrases(content, result)
+                self._check_wcag_contrast(content, result)
+                self._check_font_size_tiny(content, result)
+
             # Determine pass/fail
             result['passed'] = len(result['errors']) == 0
 
@@ -1526,6 +1531,186 @@ class SVGQualityChecker:
                     f"viewBox mismatch: {label} requires '{expected.canonical}', "
                     f"got '{parsed.canonical}'"
                 )
+
+    # Checks 9–11 — EduForge / issue #133 additions
+    # -----------------------------------------------------------------------
+
+    _PLACEHOLDER_PHRASES = (
+        "详见课堂版",
+        "教师按 .md 内容讲解",
+        "教师按.md内容讲解",
+    )
+
+    _CODE_BG_COLORS = frozenset({
+        "#1e1e1e", "#2d2d2d", "#263238", "#282828",
+        "#1a1a2e", "#0d1117", "#121212", "#1b1b1b",
+        "#212121", "#252526",
+    })
+
+    @staticmethod
+    def _hex_luminance(hex_color: str) -> float:
+        """Relative luminance (0..1) for a CSS hex color string (WCAG 2.1)."""
+        h = hex_color.lstrip("#")
+        if len(h) == 3:
+            h = h[0] * 2 + h[1] * 2 + h[2] * 2
+        if len(h) != 6:
+            return 0.5
+        r, g, b = (int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+        def _lin(c: float) -> float:
+            return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+        return 0.2126 * _lin(r) + 0.7152 * _lin(g) + 0.0722 * _lin(b)
+
+    def _check_placeholder_phrases(self, content: str, result: Dict) -> None:
+        """Error: lightweight scaffold SVG — contains placeholder text (issue #125)."""
+        for phrase in self._PLACEHOLDER_PHRASES:
+            if phrase in content:
+                result['errors'].append(
+                    f"Placeholder scaffold text detected ({phrase!r}) — "
+                    "regenerate with full content (issue #125)"
+                )
+                return
+
+    def _check_wcag_contrast(self, content: str, result: Dict) -> None:
+        """Error: text/background pair fails WCAG AA 4.5:1 contrast ratio (issue #133)."""
+        rect_fills = re.findall(
+            r'<rect[^>]+fill\s*=\s*["\']?(#[0-9a-fA-F]{3,6})["\']?', content)
+        text_fills = re.findall(
+            r'<text[^>]+fill\s*=\s*["\']?(#[0-9a-fA-F]{3,6})["\']?', content)
+
+        candidate_bgs = [c for c in rect_fills if c.lower() not in self._CODE_BG_COLORS]
+        if not candidate_bgs or not text_fills:
+            return
+
+        bg, fg = candidate_bgs[0], text_fills[0]
+        la, lb = self._hex_luminance(bg), self._hex_luminance(fg)
+        lighter, darker = max(la, lb), min(la, lb)
+        ratio = (lighter + 0.05) / (darker + 0.05)
+        if ratio < 4.5:
+            result['errors'].append(
+                f"WCAG AA contrast failure: {fg} on {bg} = {ratio:.2f}:1 "
+                "(minimum 4.5:1 — issue #133)"
+            )
+
+    def _check_font_size_tiny(self, content: str, result: Dict) -> None:
+        """Error: font-size below 10 px — unreadable on projected slides (issue #133)."""
+        for m in re.finditer(
+            r'font-size\s*=\s*["\']?(\d+(?:\.\d+)?)(px)?["\']?', content, re.IGNORECASE
+        ):
+            size = float(m.group(1))
+            if size < 10:
+                result['errors'].append(
+                    f"font-size {size}px is below the 10 px minimum "
+                    "(unreadable on projection — issue #133)"
+                )
+                return
+
+    # Fills that are page background / neutral panel surfaces, not a "colored
+    # header strip". Used by _check_single_panel_layout to tell an empty accent
+    # bar apart from the panel/background it sits on.
+    _NEUTRAL_PANEL_FILLS = frozenset({
+        '#ffffff', '#fefcf7', '#f5efe3', '#ede4d1', '#faf6ec', '#f7f2e7',
+        'none', 'transparent',
+    })
+
+    @staticmethod
+    def _rect_attrs(tag: str) -> dict:
+        """Extract x/y/width/height/fill from a single <rect ...> tag (attrs in
+        any order). Missing numeric attrs default to 0.0; missing fill to ''.
+
+        The leading ``(?<![\\w-])`` guard stops ``width`` from matching inside
+        ``stroke-width`` (a plain ``\\b`` fires on the ``-`` boundary and would
+        return the stroke value as the rect width) and likewise keeps ``x`` / ``y``
+        from matching inside ``rx`` / ``ry`` / ``max-…``.
+
+        NOTE: ``fill`` only recognizes ``#hex`` / ``none`` / ``transparent``. CSS
+        named colors (``white``), ``rgb(...)`` and ``url(#grad)`` fills resolve to
+        ''  — the header-strip heuristic then treats them as non-saturated and
+        skips them (a missed detection, never a false positive). Acceptable for a
+        warning-level layout signal.
+        """
+        def num(name: str) -> float:
+            m = re.search(rf'(?<![\w-]){name}\s*=\s*["\']?(-?\d+(?:\.\d+)?)', tag)
+            return float(m.group(1)) if m else 0.0
+        fill_m = re.search(r'(?<![\w-])fill\s*=\s*["\']?(#[0-9a-fA-F]{3,6}|none|transparent)', tag)
+        return {
+            'x': num('x'), 'y': num('y'), 'w': num('width'), 'h': num('height'),
+            'fill': (fill_m.group(1).lower() if fill_m else ''),
+        }
+
+    def _check_single_panel_layout(self, content: str, result: Dict) -> None:
+        """Warning: single content-panel layout defects (ppt-master#11).
+
+        A "single content-panel" slide places one full-width content panel in the
+        body band and fills it with text. Three systematic defects were observed:
+
+          1. empty colored header strip — an accent-filled bar at the panel top
+             with no title text overlapping it;
+          2. first content line clipped against the panel / header top edge;
+          3. content underfills the panel — text hugs the top and leaves a large
+             empty band at the bottom (fixed-height panel that did not fit/fill).
+
+        Only fires when exactly ONE dominant content panel is present
+        (width >= 820, height >= 200, top in the body band). Card-grid,
+        two-column, code-panel (<820 wide) and short banner (<200 tall) frames
+        are skipped so the heuristic does not false-positive on legitimate
+        layouts. Severity is warning — a layout signal, not a hard export blocker.
+        """
+        rects = [self._rect_attrs(t) for t in re.findall(r'<rect\b[^>]*>', content)]
+        # Dominant content panels: wide + tall + sitting in the body band, never
+        # the full-canvas background.
+        panels = [
+            r for r in rects
+            if r['w'] >= 820 and r['h'] >= 200 and 140 <= r['y'] <= 360
+            and not (r['w'] >= 1200 and r['h'] >= 700)
+        ]
+        if len(panels) != 1:
+            return
+        panel = panels[0]
+        p_top, p_h = panel['y'], panel['h']
+        p_bottom = p_top + p_h
+
+        # y of every <text> baseline that falls inside the panel band.
+        # NOTE: only the <text y=...> baseline is tracked; <tspan y=...> offsets
+        # are not. The EduForge generator emits y on the <text> element directly,
+        # so this is sufficient here — a deck that placed all y on <tspan> would
+        # leave text_ys empty and skip checks 2/3 (silent, never a false positive).
+        text_ys = sorted(
+            float(m.group(1))
+            for m in re.finditer(r'<text\b[^>]*\by\s*=\s*["\']?(-?\d+(?:\.\d+)?)', content)
+            if p_top - 2 <= float(m.group(1)) <= p_bottom + 2
+        )
+
+        # --- 1. empty colored header strip at the panel top -------------------
+        for r in rects:
+            if r is panel:
+                continue
+            saturated = r['fill'].startswith('#') and r['fill'] not in self._NEUTRAL_PANEL_FILLS
+            top_aligned = abs(r['y'] - p_top) <= 6
+            strip_shaped = r['w'] >= panel['w'] * 0.5 and 18 <= r['h'] <= 70
+            if saturated and top_aligned and strip_shaped:
+                overlaps = any(r['y'] - 2 <= ty <= r['y'] + r['h'] + 2 for ty in text_ys)
+                if not overlaps:
+                    result['warnings'].append(
+                        "single content-panel: empty colored header strip at panel "
+                        f"top (y={r['y']:.0f}, h={r['h']:.0f}) carries no title text "
+                        "(ppt-master#11)"
+                    )
+                    break
+
+        if not text_ys:
+            return
+
+        # --- 2. first content line clipped at the panel top -------------------
+        if text_ys[0] - p_top < 14:
+            result['warnings'].append(
+                "single content-panel: first content line clipped at panel top "
+                f"(first text y={text_ys[0]:.0f}, panel top y={p_top:.0f} — "
+                "needs >= 14px padding) (ppt-master#11)"
+            )
+
+        # --- 3. content underfills the panel (top-loaded, large bottom gap) ---
 
     def _check_forbidden_elements(self, content: str, root: ET.Element, result: Dict):
         """Check forbidden elements (blocklist)"""
