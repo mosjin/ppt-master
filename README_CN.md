@@ -1,4 +1,8 @@
-# <a href="docs/assets/brand/ppt-master-logo.png"><img src="docs/assets/brand/ppt-master-logo-readme.webp" alt="PPT Master" width="180" align="middle"></a> — AI 生成原生 PowerPoint，支持任意文档输入
+<p align="center">
+  <a href="docs/assets/brand/ppt-master-logo.png"><img src="docs/assets/brand/ppt-master-logo-readme.webp" alt="PPT Master" width="360"></a>
+</p>
+
+# PPT Master — AI 生成原生 PowerPoint，支持任意文档输入
 
 [![Version](https://img.shields.io/badge/version-v2.9.0-blue.svg)](https://github.com/mosjin/ppt-master/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
