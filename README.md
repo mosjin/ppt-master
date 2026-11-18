@@ -1,4 +1,4 @@
-# PPT Master — AI generates native PowerPoint from any document
+# <a href="docs/assets/brand/ppt-master-logo.png"><img src="docs/assets/brand/ppt-master-logo-readme.webp" alt="PPT Master" width="180" align="middle"></a> — AI generates native PowerPoint from any document
 
 [![Version](https://img.shields.io/badge/version-v2.9.0-blue.svg)](https://github.com/mosjin/ppt-master/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -56,10 +56,6 @@ Thanks to [Kimi](https://www.kimi.com/code/?aff=ppt-master) for sponsoring this 
 </table>
 
 </details>
-
-<p align="center">
-  <a href="docs/assets/brand/ppt-master-logo.png"><img src="docs/assets/brand/ppt-master-logo-readme.webp" alt="PPT Master" width="360"></a>
-</p>
 
 > **Editable is already table stakes — what sets PPT Master apart is native depth.** It delivers a real PowerPoint: slide masters, native shapes, and data-backed charts and tables — neither flat text boxes nor a filled-in template. It structures your argument first and designs page by page second, while **continuously converging with PowerPoint itself** as new native capabilities land each release. In form, it's a local workflow that runs inside any agent-capable AI tool: hand the AI your topic or source files and get a `.pptx` generated on your machine — local data, no platform or model lock-in. How it works and where the limits are → [Product Positioning](#product-positioning).
 
